@@ -1,6 +1,6 @@
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use state::{StartActivityError, State, StateBuilder};
+use state::{Activity, StartActivityError, State, StateBuilder};
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -10,13 +10,30 @@ struct Cli {
 
 #[derive(Clone, Debug, Subcommand)]
 enum SubCommand {
-    Add { name: String, target_minutes: usize },
+    Add {
+        name: String,
+        target_minutes: usize,
+    },
     List,
-    Delete { id: usize },
-    Start { id: usize },
+    Delete {
+        id: usize,
+    },
+    Start {
+        id: usize,
+    },
     End,
-    Register { id: usize, minutes: usize },
-    Overwrite { id: usize, minutes: usize },
+    Register {
+        id: usize,
+        minutes: usize,
+    },
+    Overwrite {
+        id: usize,
+        minutes: usize,
+    },
+    Pomo {
+        #[arg(default_value_t = 30)]
+        minutes: usize,
+    },
 }
 
 fn main() {
@@ -40,10 +57,15 @@ fn main() {
             overwrite_time(&mut current_state, id, minutes)
         }
         None => list_recommended_action(&current_state),
+        Some(SubCommand::Pomo { minutes }) => {
+            pomodoro(&mut current_state, minutes);
+        }
     };
 
     save_state(current_state).expect("failed to save state");
 }
+
+fn pomodoro(current_state: &mut State, minutes: usize) {}
 
 fn save_state(current_state: State) -> Result<(), Box<dyn std::error::Error>> {
     let home = std::env::var("HOME")?;
@@ -127,9 +149,16 @@ fn list_activities(current_state: &State) {
     }
 }
 
-fn list_recommended_action(current_state: &State) {
+enum FindRecommendedActionError<'a> {
+    NoMoreTasks,
+    Ongoing(&'a Activity),
+    OngoingCompleted(&'a Activity),
+}
+
+fn find_recommended_action(
+    current_state: &State,
+) -> Result<&Activity, FindRecommendedActionError<'_>> {
     if let Some(current_task) = current_state.current_activity() {
-        let task_formatted = current_state.format_activity(current_task, None);
         if current_task.acheived_minutes()
             + current_state
                 .current_session_duration()
@@ -138,9 +167,9 @@ fn list_recommended_action(current_state: &State) {
                 .max(0) as usize
             >= current_task.target_minutes()
         {
-            println!("You're currently doing:\n{task_formatted}\nStop the current task!");
+            Err(FindRecommendedActionError::OngoingCompleted(current_task))
         } else {
-            println!("Continue with your current task!\n{task_formatted}");
+            Err(FindRecommendedActionError::Ongoing(current_task))
         }
     } else if let Some(activity) = current_state.activities().iter().reduce(|a, b| {
         if a.target_minutes().saturating_sub(a.acheived_minutes())
@@ -151,9 +180,26 @@ fn list_recommended_action(current_state: &State) {
             b
         }
     }) {
-        println!("{}", current_state.format_activity(activity, None));
+        Ok(activity)
     } else {
-        println!("There are no more tasks! You're done!");
+        Err(FindRecommendedActionError::NoMoreTasks)
+    }
+}
+
+fn list_recommended_action(current_state: &State) {
+    match find_recommended_action(current_state) {
+        Ok(activity) => println!("{}", current_state.format_activity(activity, None)),
+        Err(FindRecommendedActionError::NoMoreTasks) => {
+            println!("There are no more tasks! You're done!")
+        }
+        Err(FindRecommendedActionError::OngoingCompleted(activity)) => {
+            let task_formatted = current_state.format_activity(activity, None);
+            println!("You're currently doing:\n{task_formatted}\nStop the current task!");
+        }
+        Err(FindRecommendedActionError::Ongoing(activity)) => {
+            let task_formatted = current_state.format_activity(activity, None);
+            println!("Continue with your current task!\n{task_formatted}");
+        }
     }
 }
 
