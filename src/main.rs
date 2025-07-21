@@ -1,4 +1,6 @@
-use chrono::Utc;
+use std::time::Duration;
+
+use chrono::{TimeDelta, Utc};
 use clap::{Parser, Subcommand};
 use state::{Activity, StartActivityError, State, StateBuilder};
 
@@ -65,7 +67,58 @@ fn main() {
     save_state(current_state).expect("failed to save state");
 }
 
-fn pomodoro(current_state: &mut State, minutes: usize) {}
+fn pomodoro(current_state: &mut State, minutes: usize) {
+    let (activity, session_minutes) = match find_recommended_action(&current_state) {
+        Ok(activity) => (
+            activity,
+            activity
+                .target_minutes()
+                .saturating_sub(activity.acheived_minutes())
+                .max(minutes),
+        ),
+        Err(FindRecommendedActionError::NoMoreTasks) => {
+            println!("You have no more tasks! You're done!");
+            return;
+        }
+        Err(FindRecommendedActionError::Ongoing(activity)) => {
+            println!(
+                "Stop your current task before running pomo!\n{}",
+                current_state.format_activity(activity, None)
+            );
+            return;
+        }
+        Err(FindRecommendedActionError::OngoingCompleted(activity)) => {
+            println!(
+                "Stop your current task!\n{}",
+                current_state.format_activity(activity, None)
+            );
+            return;
+        }
+    };
+
+    println!("Work on this task for {session_minutes}min!");
+    let activity_id = activity.id();
+    let duration = Duration::from_secs(session_minutes as u64 * 60);
+    current_state
+        .start_activity(activity_id)
+        .expect("should be able to start activity");
+    let activity = current_state
+        .activity_by_id(activity_id)
+        .expect("should be able to get ID of started activity");
+    println!("{}", current_state.format_activity(activity, None));
+
+    std::thread::sleep(duration);
+
+    println!("Stop working!");
+    // FIXME: make sure no other mutating commands can run during a pomodoro session!
+    current_state
+        .end_activity()
+        .expect("should be able to end activity");
+    let activity = current_state
+        .activity_by_id(activity_id)
+        .expect("should be able to get ID of finished activity");
+    println!("{}", current_state.format_activity(activity, None));
+}
 
 fn save_state(current_state: State) -> Result<(), Box<dyn std::error::Error>> {
     let home = std::env::var("HOME")?;
