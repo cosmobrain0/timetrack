@@ -14,3 +14,6 @@ Once the minutes have passed, it will record the work as done, end the session a
 
 If it receives a Ctrl+C before the timer is up, it will record the amount of work done and end the session, but also let you know how many
 more minutes you were supposed to work.
+
+This is what happens if there is no ongoing task. If there is already an ongoing task, the user is told about the ongoing task and prompted
+to end it before running `timetrack pomo` again.
