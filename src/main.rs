@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use chrono::{TimeDelta, Utc};
+use chrono::Utc;
 use clap::{Parser, Subcommand};
 use state::{Activity, StartActivityError, State, StateBuilder};
 
@@ -63,8 +63,6 @@ fn main() {
             pomodoro(&mut current_state, minutes);
         }
     };
-
-    save_state(current_state).expect("failed to save state");
 }
 
 fn pomodoro(current_state: &mut State, minutes: usize) {
@@ -74,7 +72,7 @@ fn pomodoro(current_state: &mut State, minutes: usize) {
             activity
                 .target_minutes()
                 .saturating_sub(activity.acheived_minutes())
-                .max(minutes),
+                .min(minutes),
         ),
         Err(FindRecommendedActionError::NoMoreTasks) => {
             println!("You have no more tasks! You're done!");
@@ -118,15 +116,6 @@ fn pomodoro(current_state: &mut State, minutes: usize) {
         .activity_by_id(activity_id)
         .expect("should be able to get ID of finished activity");
     println!("{}", current_state.format_activity(activity, None));
-}
-
-fn save_state(current_state: State) -> Result<(), Box<dyn std::error::Error>> {
-    let home = std::env::var("HOME")?;
-    std::fs::write(
-        format!("{home}/.timetrack/state.json"),
-        serde_json::to_string(&current_state).expect("should be able to convert to string"),
-    )?;
-    Ok(())
 }
 
 fn overwrite_time(current_state: &mut State, id: usize, minutes: usize) {
@@ -322,6 +311,7 @@ mod state {
                 date: Utc::now().date_naive(),
                 activities: self
                     .activities
+                    .clone()
                     .into_iter()
                     .map(|x| x.with_acheived_reset())
                     .collect(),
@@ -492,6 +482,20 @@ mod state {
                 }
                 .color(highlight_colour)
             )
+        }
+
+        fn save_state(&self) -> Result<(), Box<dyn std::error::Error>> {
+            let home = std::env::var("HOME")?;
+            std::fs::write(
+                format!("{home}/.timetrack/state.json"),
+                serde_json::to_string(self).expect("should be able to convert to string"),
+            )?;
+            Ok(())
+        }
+    }
+    impl Drop for State {
+        fn drop(&mut self) {
+            self.save_state().expect("should be able to save state");
         }
     }
 

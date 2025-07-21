@@ -17,3 +17,5 @@ more minutes you were supposed to work.
 
 This is what happens if there is no ongoing task. If there is already an ongoing task, the user is told about the ongoing task and prompted
 to end it before running `timetrack pomo` again.
+
+The user should be able to see the timer.
