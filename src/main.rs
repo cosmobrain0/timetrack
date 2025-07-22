@@ -1,6 +1,13 @@
+use std::{
+    io::Write,
+    sync::{Arc, atomic::AtomicBool},
+    time::{Duration, Instant},
+};
+
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use state::{StartActivityError, State, StateBuilder};
+use crossterm::{cursor, execute, style};
+use state::{Activity, StartActivityError, State, StateBuilder};
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -10,13 +17,30 @@ struct Cli {
 
 #[derive(Clone, Debug, Subcommand)]
 enum SubCommand {
-    Add { name: String, target_minutes: usize },
+    Add {
+        name: String,
+        target_minutes: usize,
+    },
     List,
-    Delete { id: usize },
-    Start { id: usize },
+    Delete {
+        id: usize,
+    },
+    Start {
+        id: usize,
+    },
     End,
-    Register { id: usize, minutes: usize },
-    Overwrite { id: usize, minutes: usize },
+    Register {
+        id: usize,
+        minutes: usize,
+    },
+    Overwrite {
+        id: usize,
+        minutes: usize,
+    },
+    Pomo {
+        #[arg(default_value_t = 30)]
+        minutes: usize,
+    },
 }
 
 fn main() {
@@ -40,18 +64,97 @@ fn main() {
             overwrite_time(&mut current_state, id, minutes)
         }
         None => list_recommended_action(&current_state),
+        Some(SubCommand::Pomo { minutes }) => {
+            pomodoro(&mut current_state, minutes);
+        }
     };
-
-    save_state(current_state).expect("failed to save state");
 }
 
-fn save_state(current_state: State) -> Result<(), Box<dyn std::error::Error>> {
-    let home = std::env::var("HOME")?;
-    std::fs::write(
-        format!("{home}/.timetrack/state.json"),
-        serde_json::to_string(&current_state).expect("should be able to convert to string"),
-    )?;
-    Ok(())
+fn pomodoro(current_state: &mut State, minutes: usize) {
+    let (activity, session_minutes) = match find_recommended_action(current_state) {
+        Ok(activity) => (
+            activity,
+            activity
+                .target_minutes()
+                .saturating_sub(activity.acheived_minutes())
+                .min(minutes),
+        ),
+        Err(FindRecommendedActionError::NoMoreTasks) => {
+            println!("You have no more tasks! You're done!");
+            return;
+        }
+        Err(FindRecommendedActionError::Ongoing(activity)) => {
+            println!(
+                "Stop your current task before running pomo!\n{}",
+                current_state.format_activity(activity, None)
+            );
+            return;
+        }
+        Err(FindRecommendedActionError::OngoingCompleted(activity)) => {
+            println!(
+                "Stop your current task!\n{}",
+                current_state.format_activity(activity, None)
+            );
+            return;
+        }
+    };
+
+    let interrupted = Arc::new(AtomicBool::new(false));
+
+    let interrupted_clone = Arc::clone(&interrupted);
+    ctrlc::set_handler(move || {
+        interrupted_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+    })
+    .expect("should be able to set ctrlc handler!");
+
+    println!("Work on this task for {session_minutes}min!");
+    let activity_id = activity.id();
+    let duration = Duration::from_secs(session_minutes as u64 * 60);
+    current_state
+        .start_activity_pomo(activity_id, Some(session_minutes))
+        .expect("should be able to start activity");
+    let start = Instant::now();
+    let end = start + duration;
+    let activity = current_state
+        .activity_by_id(activity_id)
+        .expect("should be able to get ID of started activity");
+    println!("{}", current_state.format_activity(activity, None));
+
+    const TIMER_LENGTH: usize = 10;
+    let mut stdout = std::io::stdout();
+    while Instant::now() < end && !interrupted.load(std::sync::atomic::Ordering::Relaxed) {
+        let length = (TIMER_LENGTH as f64 * (Instant::now() - start).as_secs_f64()
+            / (duration).as_secs_f64())
+        .floor() as usize;
+        execute!(
+            stdout,
+            cursor::MoveToColumn(0),
+            style::Print(format!(
+                "[{bars}>{padding}]",
+                bars = "=".repeat(length),
+                padding = " ".repeat(TIMER_LENGTH.saturating_sub(length))
+            ))
+        )
+        .expect("should be able to draw progress bar");
+        stdout.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    println!("\n");
+
+    if interrupted.load(std::sync::atomic::Ordering::Relaxed) {
+        let time_left = ((end - Instant::now()).as_secs_f64() / 60.0).ceil() as usize;
+        println!("You've ended the session {time_left}min early!");
+    } else {
+        println!("Stop working!");
+    }
+    current_state
+        .end_activity(true)
+        .expect("should be able to end activity in pomo!");
+
+    let activity = current_state
+        .activity_by_id(activity_id)
+        .expect("should be able to get ID of finished activity");
+    println!("{}", current_state.format_activity(activity, None));
 }
 
 fn overwrite_time(current_state: &mut State, id: usize, minutes: usize) {
@@ -73,10 +176,13 @@ fn register_time(current_state: &mut State, id: usize, minutes: usize) {
 }
 
 fn end_activity(current_state: &mut State) {
-    match current_state.end_activity() {
+    match current_state.end_activity(false) {
         Ok(()) => println!("Ended activity!"),
-        Err(()) => {
+        Err(state::EndActivityError::NoCurrentActivity) => {
             println!("There is no ongoing activity!")
+        }
+        Err(state::EndActivityError::PomoOngoing) => {
+            println!("You must cancel the ongoing pomo session first!");
         }
     }
 }
@@ -99,8 +205,13 @@ fn start_activity(current_state: &mut State, id: usize) {
 
 fn del_activity(current_state: &mut State, id: usize) {
     if let Some(id) = current_state.get_by_raw_id(id) {
-        current_state.delete(id);
-        println!("Deleted activity {id}!");
+        match current_state.delete(id) {
+            Ok(()) => println!("Deleted activity {id}!"),
+            Err(state::DeletionError::PomoOngoing) => {
+                println!("You must end the currently ongoing pomo session first!")
+            }
+            Err(state::DeletionError::InvalidId) => unreachable!(),
+        }
     } else {
         println!("There is no activity with id {id}!");
     }
@@ -127,9 +238,16 @@ fn list_activities(current_state: &State) {
     }
 }
 
-fn list_recommended_action(current_state: &State) {
+enum FindRecommendedActionError<'a> {
+    NoMoreTasks,
+    Ongoing(&'a Activity),
+    OngoingCompleted(&'a Activity),
+}
+
+fn find_recommended_action(
+    current_state: &State,
+) -> Result<&Activity, FindRecommendedActionError<'_>> {
     if let Some(current_task) = current_state.current_activity() {
-        let task_formatted = current_state.format_activity(current_task, None);
         if current_task.acheived_minutes()
             + current_state
                 .current_session_duration()
@@ -138,9 +256,9 @@ fn list_recommended_action(current_state: &State) {
                 .max(0) as usize
             >= current_task.target_minutes()
         {
-            println!("You're currently doing:\n{task_formatted}\nStop the current task!");
+            Err(FindRecommendedActionError::OngoingCompleted(current_task))
         } else {
-            println!("Continue with your current task!\n{task_formatted}");
+            Err(FindRecommendedActionError::Ongoing(current_task))
         }
     } else if let Some(activity) = current_state.activities().iter().reduce(|a, b| {
         if a.target_minutes().saturating_sub(a.acheived_minutes())
@@ -151,9 +269,26 @@ fn list_recommended_action(current_state: &State) {
             b
         }
     }) {
-        println!("{}", current_state.format_activity(activity, None));
+        Ok(activity)
     } else {
-        println!("There are no more tasks! You're done!");
+        Err(FindRecommendedActionError::NoMoreTasks)
+    }
+}
+
+fn list_recommended_action(current_state: &State) {
+    match find_recommended_action(current_state) {
+        Ok(activity) => println!("{}", current_state.format_activity(activity, None)),
+        Err(FindRecommendedActionError::NoMoreTasks) => {
+            println!("There are no more tasks! You're done!")
+        }
+        Err(FindRecommendedActionError::OngoingCompleted(activity)) => {
+            let task_formatted = current_state.format_activity(activity, None);
+            println!("You're currently doing:\n{task_formatted}\nStop the current task!");
+        }
+        Err(FindRecommendedActionError::Ongoing(activity)) => {
+            let task_formatted = current_state.format_activity(activity, None);
+            println!("Continue with your current task!\n{task_formatted}");
+        }
     }
 }
 
@@ -191,7 +326,7 @@ mod state {
         pub date: Option<NaiveDate>,
         pub activities: Option<Vec<Activity>>,
         pub next_activity_id: Option<usize>,
-        pub current: Option<(ActivityId, DateTime<Utc>)>,
+        pub current: Option<CurrentActionInfo>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,7 +334,7 @@ mod state {
         date: NaiveDate,
         activities: Vec<Activity>,
         next_activity_id: usize,
-        current: Option<(ActivityId, DateTime<Utc>)>,
+        current: Option<CurrentActionInfo>,
     }
     impl From<StateBuilder> for State {
         fn from(value: StateBuilder) -> Self {
@@ -223,6 +358,7 @@ mod state {
                 date: Utc::now().date_naive(),
                 activities: self
                     .activities
+                    .clone()
                     .into_iter()
                     .map(|x| x.with_acheived_reset())
                     .collect(),
@@ -240,12 +376,14 @@ mod state {
             };
             let id = activity.id;
             self.activities.push(activity);
+            self.save_state().unwrap();
             id
         }
 
         fn new_activity_id(&mut self) -> ActivityId {
             let id = ActivityId(self.next_activity_id + 1);
             self.next_activity_id += 1;
+            self.save_state().unwrap();
             id
         }
 
@@ -266,51 +404,71 @@ mod state {
                 .find_map(|(i, activity)| (activity.id == id).then_some(i))
         }
 
-        pub fn delete(&mut self, id: ActivityId) -> bool {
+        pub fn delete(&mut self, id: ActivityId) -> Result<(), DeletionError> {
             if let Some(index) = self.get_index_by_id(id) {
-                if self.current.is_some_and(|(current_id, _)| id == current_id) {
-                    self.end_activity().unwrap();
+                if self
+                    .current
+                    .is_some_and(|current_action| id == current_action.activity_id)
+                {
+                    if let Err(EndActivityError::PomoOngoing) = self.end_activity(false) {
+                        return Err(DeletionError::PomoOngoing);
+                    }
                 }
                 self.activities.remove(index);
-                true
+                self.save_state().unwrap();
+                Ok(())
             } else {
-                false
+                Err(DeletionError::InvalidId)
             }
         }
 
         pub fn current_id(&self) -> Option<ActivityId> {
-            self.current.map(|(id, _)| id)
+            self.current.map(|x| x.activity_id)
         }
 
         pub fn start_activity(&mut self, id: ActivityId) -> Result<(), StartActivityError> {
+            self.start_activity_pomo(id, None)
+        }
+
+        pub fn start_activity_pomo(
+            &mut self,
+            id: ActivityId,
+            pomo_minutes: Option<usize>,
+        ) -> Result<(), StartActivityError> {
             if self.current.is_some() {
                 Err(StartActivityError::AlreadyOngoing)
             } else if self.get_index_by_id(id).is_some() {
-                self.current = Some((id, Utc::now()));
+                self.current = Some(CurrentActionInfo::new(id, Utc::now(), pomo_minutes));
+                self.save_state().unwrap();
                 Ok(())
             } else {
                 Err(StartActivityError::InvalidId)
             }
         }
 
-        pub fn end_activity(&mut self) -> Result<(), ()> {
+        pub fn end_activity(&mut self, override_pomo: bool) -> Result<(), EndActivityError> {
             if let Some(current) = self.current {
+                if !override_pomo && current.pomo_minutes.is_some() {
+                    return Err(EndActivityError::PomoOngoing);
+                }
                 let now = Utc::now();
-                let delta = now - current.1;
-                if let Some(index) = self.get_index_by_id(current.0) {
+                let delta = now - current.start_time;
+                if let Some(index) = self.get_index_by_id(current.activity_id) {
                     // this should always be the case
                     self.activities[index].acheived_minutes += delta.num_minutes().max(0) as usize;
                 }
                 self.current = None;
+                self.save_state().unwrap();
                 Ok(())
             } else {
-                Err(())
+                Err(EndActivityError::NoCurrentActivity)
             }
         }
 
         pub fn add_time(&mut self, id: ActivityId, minutes: usize) -> Result<(), ()> {
             if let Some(index) = self.get_index_by_id(id) {
                 self.activities[index].acheived_minutes += minutes;
+                self.save_state().unwrap();
                 Ok(())
             } else {
                 Err(())
@@ -320,6 +478,7 @@ mod state {
         pub fn overwrite_time(&mut self, id: ActivityId, minutes: usize) -> Result<(), ()> {
             if let Some(index) = self.get_index_by_id(id) {
                 self.activities[index].acheived_minutes = minutes;
+                self.save_state().unwrap();
                 Ok(())
             } else {
                 Err(())
@@ -331,8 +490,11 @@ mod state {
         }
 
         pub fn current_task_minutes(&self) -> Option<usize> {
-            self.current
-                .map(|(_, start)| (Utc::now() - start).num_minutes().max(0) as usize)
+            self.current.map(|current_activity| {
+                (Utc::now() - current_activity.start_time)
+                    .num_minutes()
+                    .max(0) as usize
+            })
         }
 
         pub fn activity_by_id(&self, id: ActivityId) -> Option<&Activity> {
@@ -340,7 +502,8 @@ mod state {
         }
 
         pub fn current_session_duration(&self) -> Option<TimeDelta> {
-            self.current.map(|(_, start)| Utc::now() - start)
+            self.current
+                .map(|current_activity| Utc::now() - current_activity.start_time)
         }
 
         pub fn current_activity(&self) -> Option<&Activity> {
@@ -394,12 +557,58 @@ mod state {
                 .color(highlight_colour)
             )
         }
+
+        fn save_state(&self) -> Result<(), Box<dyn std::error::Error>> {
+            let home = std::env::var("HOME")?;
+            std::fs::write(
+                format!("{home}/.timetrack/state.json"),
+                serde_json::to_string(self).expect("should be able to convert to string"),
+            )?;
+            Ok(())
+        }
+    }
+    impl Drop for State {
+        fn drop(&mut self) {
+            self.save_state().expect("should be able to save state");
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct CurrentActionInfo {
+        activity_id: ActivityId,
+        start_time: DateTime<Utc>,
+        pomo_minutes: Option<usize>,
+    }
+    impl CurrentActionInfo {
+        fn new(
+            activity_id: ActivityId,
+            start_time: DateTime<Utc>,
+            pomo_minutes: Option<usize>,
+        ) -> Self {
+            Self {
+                activity_id,
+                start_time,
+                pomo_minutes,
+            }
+        }
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum StartActivityError {
         /// There is already another activity in progress
         AlreadyOngoing,
+        InvalidId,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum EndActivityError {
+        PomoOngoing,
+        NoCurrentActivity,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum DeletionError {
+        PomoOngoing,
         InvalidId,
     }
 
