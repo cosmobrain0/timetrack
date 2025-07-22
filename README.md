@@ -19,3 +19,40 @@ This is what happens if there is no ongoing task. If there is already an ongoing
 to end it before running `timetrack pomo` again.
 
 The user should be able to see the timer.
+
+## Feature: todo list
+
+run
+```
+timetrack todo list
+```
+
+to list one-off todos sorted (and numbered) by priority
+
+run
+```
+timetrack todo add <name> <description?>
+```
+
+to add an item to the bottom of the todo list
+
+run
+```
+timetrack todo swap <id1> <id2>
+```
+
+to swap the items with those priorities in the todo list
+
+run
+```
+timetrack todo moveabove <id1> <id2>
+timetrack todo ma <id1> <id2>
+```
+to move `<id2>` immediately above `<id1>` in the todo list
+
+run
+```
+timetrack todo movebelow <id1> <id2>
+timetrack todo mb <id1> <id2>
+```
+to move `<id2>` immediately above `<id1>` in the todo list
