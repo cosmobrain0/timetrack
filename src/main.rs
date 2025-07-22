@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::{
+    sync::{Arc, atomic::AtomicBool},
+    time::{Duration, Instant},
+};
 
 use chrono::Utc;
 use clap::{Parser, Subcommand};
@@ -66,7 +69,7 @@ fn main() {
 }
 
 fn pomodoro(current_state: &mut State, minutes: usize) {
-    let (activity, session_minutes) = match find_recommended_action(&current_state) {
+    let (activity, session_minutes) = match find_recommended_action(current_state) {
         Ok(activity) => (
             activity,
             activity
@@ -94,24 +97,42 @@ fn pomodoro(current_state: &mut State, minutes: usize) {
         }
     };
 
+    let interrupted = Arc::new(AtomicBool::new(false));
+
+    let interrupted_clone = Arc::clone(&interrupted);
+    ctrlc::set_handler(move || {
+        interrupted_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+    })
+    .expect("should be able to set ctrlc handler!");
+
     println!("Work on this task for {session_minutes}min!");
     let activity_id = activity.id();
     let duration = Duration::from_secs(session_minutes as u64 * 60);
     current_state
         .start_activity(activity_id)
         .expect("should be able to start activity");
+    let start = Instant::now();
+    let end = start + duration;
     let activity = current_state
         .activity_by_id(activity_id)
         .expect("should be able to get ID of started activity");
     println!("{}", current_state.format_activity(activity, None));
 
-    std::thread::sleep(duration);
+    while Instant::now() < end && !interrupted.load(std::sync::atomic::Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
 
-    println!("Stop working!");
+    if interrupted.load(std::sync::atomic::Ordering::Relaxed) {
+        let time_left = ((end - Instant::now()).as_secs_f64() / 60.0).ceil() as usize;
+        println!("You've ended the session {time_left}min early!");
+    } else {
+        println!("Stop working!");
+    }
     // FIXME: make sure no other mutating commands can run during a pomodoro session!
     current_state
         .end_activity()
-        .expect("should be able to end activity");
+        .expect("should be able to end activity in pomo!");
+
     let activity = current_state
         .activity_by_id(activity_id)
         .expect("should be able to get ID of finished activity");
