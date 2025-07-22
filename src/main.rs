@@ -1,10 +1,12 @@
 use std::{
+    io::Write,
     sync::{Arc, atomic::AtomicBool},
     time::{Duration, Instant},
 };
 
 use chrono::Utc;
 use clap::{Parser, Subcommand};
+use crossterm::{cursor, execute, style};
 use state::{Activity, StartActivityError, State, StateBuilder};
 
 #[derive(Parser, Debug)]
@@ -118,9 +120,26 @@ fn pomodoro(current_state: &mut State, minutes: usize) {
         .expect("should be able to get ID of started activity");
     println!("{}", current_state.format_activity(activity, None));
 
+    const TIMER_LENGTH: usize = 10;
+    let mut stdout = std::io::stdout();
     while Instant::now() < end && !interrupted.load(std::sync::atomic::Ordering::Relaxed) {
+        let length = (TIMER_LENGTH as f64 * (Instant::now() - start).as_secs_f64()
+            / (duration).as_secs_f64())
+        .floor() as usize;
+        execute!(
+            stdout,
+            cursor::MoveToColumn(0),
+            style::Print(format!(
+                "[{bars}>{padding}]",
+                bars = "=".repeat(length),
+                padding = " ".repeat(TIMER_LENGTH.saturating_sub(length))
+            ))
+        )
+        .expect("should be able to draw progress bar");
+        stdout.flush().unwrap();
         std::thread::sleep(Duration::from_millis(50));
     }
+    println!("\n");
 
     if interrupted.load(std::sync::atomic::Ordering::Relaxed) {
         let time_left = ((end - Instant::now()).as_secs_f64() / 60.0).ceil() as usize;
