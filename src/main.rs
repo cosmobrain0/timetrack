@@ -154,7 +154,20 @@ fn pomodoro(current_state: &mut State, minutes: usize) {
     let activity = current_state
         .activity_by_id(activity_id)
         .expect("should be able to get ID of finished activity");
+    let activity_name = activity.name();
     println!("{}", current_state.format_activity(activity, None));
+
+    mac_notification_sys::send_notification(
+        "Pomodoro Session Over!!",
+        Some(activity_name),
+        &format!("You've worked for {session_minutes}min on {activity_name}!"),
+        Some(
+            mac_notification_sys::Notification::new()
+                .asynchronous(true)
+                .wait_for_click(true),
+        ),
+    )
+    .expect("should be able to send notification!");
 }
 
 fn overwrite_time(current_state: &mut State, id: usize, minutes: usize) {
@@ -650,5 +663,19 @@ mod state {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "[{id}]", id = self.0)
         }
+    }
+}
+
+mod tests {
+    #[test]
+    fn notifications_work() {
+        use mac_notification_sys::*;
+        send_notification(
+            "This is a title!",
+            Some("this is a really really really really long subtitle"),
+            "Here's the body!",
+            Some(Notification::new().asynchronous(true).wait_for_click(true)),
+        )
+        .unwrap();
     }
 }
