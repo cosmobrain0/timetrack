@@ -1,10 +1,9 @@
 use std::{
     io::Write,
     sync::{Arc, atomic::AtomicBool},
-    time::{Duration, Instant},
 };
 
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 use crossterm::{cursor, execute, style};
 use state::{Activity, StartActivityError, State, StateBuilder};
@@ -109,11 +108,11 @@ fn pomodoro(current_state: &mut State, minutes: usize) {
 
     println!("Work on this task for {session_minutes}min!");
     let activity_id = activity.id();
-    let duration = Duration::from_secs(session_minutes as u64 * 60);
+    let duration = Duration::seconds(session_minutes as i64 * 60);
     current_state
         .start_activity_pomo(activity_id, Some(session_minutes))
         .expect("should be able to start activity");
-    let start = Instant::now();
+    let start = Utc::now();
     let end = start + duration;
     let activity = current_state
         .activity_by_id(activity_id)
@@ -122,10 +121,10 @@ fn pomodoro(current_state: &mut State, minutes: usize) {
 
     const TIMER_LENGTH: usize = 10;
     let mut stdout = std::io::stdout();
-    while Instant::now() < end && !interrupted.load(std::sync::atomic::Ordering::Relaxed) {
-        let length = (TIMER_LENGTH as f64 * (Instant::now() - start).as_secs_f64()
-            / (duration).as_secs_f64())
-        .floor() as usize;
+    while Utc::now() < end && !interrupted.load(std::sync::atomic::Ordering::Relaxed) {
+        let length = (TIMER_LENGTH as f64 * (Utc::now() - start).num_seconds() as f64
+            / duration.num_seconds() as f64)
+            .floor() as usize;
         execute!(
             stdout,
             cursor::MoveToColumn(0),
@@ -137,12 +136,12 @@ fn pomodoro(current_state: &mut State, minutes: usize) {
         )
         .expect("should be able to draw progress bar");
         stdout.flush().unwrap();
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
     println!("\n");
 
     if interrupted.load(std::sync::atomic::Ordering::Relaxed) {
-        let time_left = ((end - Instant::now()).as_secs_f64() / 60.0).ceil() as usize;
+        let time_left = ((end - Utc::now()).num_seconds() as f64 / 60.0).ceil() as usize;
         println!("You've ended the session {time_left}min early!");
     } else {
         println!("Stop working!");
