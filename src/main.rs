@@ -230,9 +230,16 @@ fn del_activity(current_state: &mut State, id: usize) {
 }
 
 fn list_activities(current_state: &State) {
+    let current_activity = current_state.current_id();
+    let current_duration = current_state.current_session_duration();
     let mut activities = current_state.activities();
-    activities.sort_by_key(|x| x.target_minutes().saturating_sub(x.acheived_minutes()));
-    activities.reverse();
+    activities.sort_by_key(|x| {
+        x.acheived_minutes()
+            + current_activity
+                .is_some_and(|id| id == x.id())
+                .then(|| current_duration.unwrap().num_minutes().max(0) as usize)
+                .unwrap_or(0)
+    });
     let activities = activities;
     let max_name_length = activities
         .iter()
@@ -272,15 +279,18 @@ fn find_recommended_action(
         } else {
             Err(FindRecommendedActionError::Ongoing(current_task))
         }
-    } else if let Some(activity) = current_state.activities().iter().reduce(|a, b| {
-        if a.target_minutes().saturating_sub(a.acheived_minutes())
-            > b.target_minutes().saturating_sub(b.acheived_minutes())
-        {
-            a
-        } else {
-            b
-        }
-    }) {
+    } else if let Some(activity) = current_state
+        .activities()
+        .iter()
+        .filter(|x| x.target_minutes() > x.acheived_minutes())
+        .reduce(|a, b| {
+            if a.acheived_minutes() < b.acheived_minutes() {
+                a
+            } else {
+                b
+            }
+        })
+    {
         Ok(activity)
     } else {
         Err(FindRecommendedActionError::NoMoreTasks)
