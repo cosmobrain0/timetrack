@@ -10,7 +10,7 @@ use ratatui::{
     crossterm::event::{Event, KeyCode, KeyEvent},
     layout::{Constraint, Layout},
     style::{Color, Style, Stylize},
-    widgets::{Block, List},
+    widgets::{Block, List, Widget},
 };
 use tui_input::{Input, backend::crossterm::EventHandler};
 
@@ -333,48 +333,14 @@ impl TrackWindow {
             ]
         };
 
-        let activities_instructions = instruction_line(vec![
-            ("Move Up", "Up"),
-            ("Move Down", "Down"),
-            ("Start", "Space"),
-            ("Delete", "Backspace"),
-            ("Register Time", "R"),
-            ("Overwrite Time", "O"),
-        ]);
-        let max_name_length: usize = state
-            .activities()
-            .map(|x| x.name().chars().count())
-            .max()
-            .unwrap_or(0)
-            + 1;
-        let list = List::new(
-            state
-                .activities()
-                .map(|x| state.format_activity(x, Some(max_name_length)))
-                .enumerate()
-                .map(|(i, x)| {
-                    if i == self.selected_activity
-                        && self.focused_widget == TrackWindowWidget::Activities
-                    {
-                        x.blue().bold()
-                    } else {
-                        x.into()
-                    }
-                }),
-        )
-        .style(if self.focused_widget == TrackWindowWidget::Activities {
-            Color::Yellow.into()
-        } else {
-            Style::default()
-        })
-        .block(if self.focused_widget == TrackWindowWidget::Activities {
-            Block::bordered()
-                .title(" Activities ")
-                .title_bottom(activities_instructions.centered())
-        } else {
-            Block::bordered().title(" Activities ")
-        });
-        frame.render_widget(list, activities_area);
+        frame.render_widget(
+            &ActivitiesWidget {
+                state,
+                is_focused: self.focused_widget == TrackWindowWidget::Activities,
+                selected_activity: self.selected_activity,
+            },
+            activities_area,
+        );
     }
 
     pub fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
@@ -417,6 +383,34 @@ impl TrackWindow {
             }) => {
                 self.selected_activity = self.selected_activity.saturating_sub(1);
             }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char(' '),
+                ..
+            }) => {
+                if let Some(id) = state
+                    .activities()
+                    .nth(self.selected_activity)
+                    .map(Activity::id)
+                {
+                    if state.current_id().is_some_and(|x| x == id) {
+                        let _ = state.end_activity(false);
+                    } else {
+                        let _ = state.start_activity(id);
+                    }
+                }
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Backspace,
+                ..
+            }) => {
+                if let Some(id) = state
+                    .activities()
+                    .nth(self.selected_activity)
+                    .map(Activity::id)
+                {
+                    let _ = state.delete(id);
+                }
+            }
             _ => {
                 if self.focused_widget == TrackWindowWidget::TextInput {
                     self.text_input.handle_event(event);
@@ -424,5 +418,59 @@ impl TrackWindow {
             }
         }
         WindowActionResult::Continue
+    }
+}
+
+struct ActivitiesWidget<'a> {
+    state: &'a State,
+    is_focused: bool,
+    selected_activity: usize,
+}
+impl<'a> Widget for &ActivitiesWidget<'a> {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let activities_instructions = instruction_line(vec![
+            ("Move Up", "Up"),
+            ("Move Down", "Down"),
+            ("Start", "Space"),
+            ("Delete", "Backspace"),
+            ("Register Time", "R"),
+            ("Overwrite Time", "O"),
+        ]);
+        let max_name_length: usize = self
+            .state
+            .activities()
+            .map(|x| x.name().chars().count())
+            .max()
+            .unwrap_or(0)
+            + 1;
+        List::new(
+            self.state
+                .activities()
+                .map(|x| self.state.format_activity(x, Some(max_name_length)))
+                .enumerate()
+                .map(|(i, x)| {
+                    if i == self.selected_activity && self.is_focused {
+                        x.blue().bold()
+                    } else {
+                        x.into()
+                    }
+                }),
+        )
+        .style(if self.is_focused {
+            Color::Yellow.into()
+        } else {
+            Style::default()
+        })
+        .block(if self.is_focused {
+            Block::bordered()
+                .title(" Activities ")
+                .title_bottom(activities_instructions.centered())
+        } else {
+            Block::bordered().title(" Activities ")
+        })
+        .render(area, buf);
     }
 }
