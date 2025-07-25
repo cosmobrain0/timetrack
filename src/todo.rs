@@ -84,7 +84,7 @@ impl TodoWindow {
         frame.render_widget(list, list_area);
     }
 
-    pub fn handle_key_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
+    pub fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
         match event {
             Event::Key(KeyEvent {
                 code: KeyCode::Tab, ..

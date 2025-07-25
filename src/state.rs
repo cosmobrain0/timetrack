@@ -74,8 +74,8 @@ impl State {
         id
     }
 
-    pub fn activities(&self) -> Vec<&Activity> {
-        self.activities.iter().collect()
+    pub fn activities(&self) -> std::slice::Iter<'_, Activity> {
+        self.activities.iter()
     }
 
     pub fn get_by_raw_id(&self, id: usize) -> Option<ActivityId> {
@@ -223,8 +223,7 @@ impl State {
             "green"
         };
         format!(
-            "{id} {status} {name} {remaining} / {target}",
-            id = activity.id().to_string().color(highlight_colour),
+            "{status} {name} {remaining} / {target}",
             name = pad(activity.name()),
             status = if ongoing {
                 if acheived < target {
@@ -254,6 +253,10 @@ impl State {
         self.activities
             .iter_mut()
             .find(|activity| activity.id == ActivityId(id))
+    }
+
+    pub(crate) fn activities_count(&self) -> usize {
+        self.activities.len()
     }
 }
 impl State {
