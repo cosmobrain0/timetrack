@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
-use colored::Colorize;
+use ratatui::{style::Stylize, text::Line};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,7 +197,7 @@ impl State {
         self.current_id().map(|id| self.activity_by_id(id).unwrap())
     }
 
-    pub fn format_activity(&self, activity: &Activity, max_name_length: Option<usize>) -> String {
+    pub fn format_activity(&self, activity: &Activity, max_name_length: Option<usize>) -> Line {
         let pad = |s: &str| {
             if let Some(max_name_length) = max_name_length {
                 let current_length = s.chars().count();
@@ -215,17 +215,8 @@ impl State {
             };
         let target = activity.target_minutes();
         let remaining = target.saturating_sub(acheived);
-        let highlight_colour = if ongoing {
-            if acheived < target { "blue" } else { "red" }
-        } else if acheived < target {
-            "white"
-        } else {
-            "green"
-        };
-        format!(
-            "{status} {name} {remaining} / {target}",
-            name = pad(activity.name()),
-            status = if ongoing {
+        let status = {
+            let status = if ongoing {
                 if acheived < target {
                     "ONGOING "
                 } else {
@@ -235,9 +226,29 @@ impl State {
                 "NOT DONE"
             } else {
                 "COMPLETE"
+            };
+
+            if ongoing {
+                if acheived < target {
+                    status.blue()
+                } else {
+                    status.red()
+                }
+            } else if acheived < target {
+                status.into()
+            } else {
+                status.green()
             }
-            .color(highlight_colour)
-        )
+        };
+        Line::from(vec![
+            status,
+            " ".into(),
+            pad(activity.name()).into(),
+            " ".into(),
+            remaining.to_string().into(),
+            " / ".into(),
+            target.to_string().into(),
+        ])
     }
 
     fn save_state(&self) -> Result<(), Box<dyn std::error::Error>> {
