@@ -1,3 +1,13 @@
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
+use ratatui::widgets::List;
+use ratatui::{
+    Frame,
+    layout::{Constraint, Layout},
+    style::{Color, Style},
+    widgets::{Block, Paragraph},
+};
+use tui_input::{Input, backend::crossterm::EventHandler};
+
 use crate::state::{State, TodoDeletionError, TodoSwapError};
 
 pub(crate) fn list_todo(current_state: &crate::state::State) {
@@ -82,5 +92,63 @@ pub(crate) fn move_todo_below(
                 if to_move > anchor { anchor + 1 } else { anchor },
             )
             .unwrap();
+    }
+}
+
+pub(crate) struct TodoWindow {
+    input_focused: bool,
+    list_page: usize,
+    input: Input,
+}
+impl TodoWindow {
+    pub fn new() -> Self {
+        Self {
+            input_focused: false,
+            list_page: 0,
+            input: Input::new(String::new()),
+        }
+    }
+
+    pub fn draw(&self, state: &State, frame: &mut Frame) {
+        let [list_area, input_area] =
+            Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(frame.area());
+        let width = frame.area().width - 3;
+        let scroll = self.input.visual_scroll(width as usize);
+        let style = if self.input_focused {
+            Color::Yellow.into()
+        } else {
+            Style::default()
+        };
+        let input = Paragraph::new(self.input.value())
+            .style(style)
+            .scroll((0, scroll as u16))
+            .block(Block::bordered().title("New Todo"));
+        frame.render_widget(input, input_area);
+
+        let list = List::new(state.get_todos().map(|x| format!("- {x}")))
+            .block(Block::bordered().title("Todo Items"));
+        frame.render_widget(list, list_area);
+    }
+
+    pub fn handle_key_event(&mut self, state: &mut State, event: &Event) {
+        match event {
+            Event::Key(KeyEvent {
+                code: KeyCode::Tab, ..
+            }) => {
+                self.input_focused = !self.input_focused;
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Enter,
+                ..
+            }) => {
+                state.push_todo(self.input.value().to_string());
+                self.input.reset();
+            }
+            _ => {
+                if self.input_focused {
+                    self.input.handle_event(event);
+                }
+            }
+        }
     }
 }
