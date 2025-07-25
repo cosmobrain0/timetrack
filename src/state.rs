@@ -249,6 +249,12 @@ impl State {
         )?;
         Ok(())
     }
+
+    pub(crate) fn get_by_raw_id_mut(&mut self, id: usize) -> Option<&mut Activity> {
+        self.activities
+            .iter_mut()
+            .find(|activity| activity.id == ActivityId(id))
+    }
 }
 impl State {
     pub fn get_todos(&self) -> std::slice::Iter<'_, String> {
@@ -387,6 +393,10 @@ impl Activity {
             acheived_minutes: 0,
             ..self
         }
+    }
+
+    pub(crate) fn set_target_minutes(&mut self, target_minutes: usize) {
+        self.target_minutes = target_minutes;
     }
 }
 

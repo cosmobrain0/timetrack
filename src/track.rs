@@ -257,3 +257,12 @@ pub fn add_activity(current_state: &mut State, name: String, target_minutes: usi
     let new_activity_id = current_state.add_activity(name.clone(), target_minutes);
     println!("Added activity {new_activity_id}: {name} with target {target_minutes}min");
 }
+
+pub fn change_target_time(current_state: &mut State, id: usize, target_minutes: usize) {
+    if let Some(activity) = current_state.get_by_raw_id_mut(id) {
+        activity.set_target_minutes(target_minutes);
+        println!("Overwritten target minutes!");
+    } else {
+        println!("That activity ID is invalid!");
+    }
+}

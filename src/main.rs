@@ -41,6 +41,11 @@ enum SubCommand {
         #[arg(default_value_t = 30)]
         minutes: usize,
     },
+    #[command(alias = "ct")]
+    ChangeTarget {
+        id: usize,
+        minutes: usize,
+    },
     #[command(alias = "td")]
     Todo(TodoArgs),
 }
@@ -99,6 +104,9 @@ fn main() {
         None => list_recommended_action(&current_state),
         Some(SubCommand::Pomo { minutes }) => {
             pomodoro(&mut current_state, minutes);
+        }
+        Some(SubCommand::ChangeTarget { id, minutes }) => {
+            change_target_time(&mut current_state, id, minutes)
         }
         Some(SubCommand::Todo(TodoArgs { command })) => match command {
             TodoSubCommand::List => list_todo(&current_state),
