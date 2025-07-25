@@ -38,18 +38,6 @@ fn main() -> Result<()> {
     //     Some(SubCommand::ChangeTarget { id, minutes }) => {
     //         change_target_time(&mut current_state, id, minutes)
     //     }
-    //     Some(SubCommand::Todo(TodoArgs { command })) => match command {
-    //         TodoSubCommand::List => list_todo(&current_state),
-    //         TodoSubCommand::Add { name } => add_todo(&mut current_state, name),
-    //         TodoSubCommand::Delete { id } => delete_todo(&mut current_state, id),
-    //         TodoSubCommand::Swap { id1, id2 } => swap_todos(&mut current_state, id1, id2),
-    //         TodoSubCommand::MoveAbove { anchor, to_move } => {
-    //             move_todo_above(&mut current_state, anchor, to_move)
-    //         }
-    //         TodoSubCommand::MoveBelow { anchor, to_move } => {
-    //             move_todo_below(&mut current_state, anchor, to_move)
-    //         }
-    //     },
     // };
 }
 
@@ -122,10 +110,6 @@ fn load_state() -> Result<State> {
     } else {
         Ok(state.refresh())
     }
-    // let mut new_state = State::new();
-    // new_state.add_activity("Test".into(), 60);
-    // new_state.add_activity("Other".into(), 135);
-    // Ok(new_state)
 }
 
 mod tests {
