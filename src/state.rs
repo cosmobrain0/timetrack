@@ -274,6 +274,32 @@ impl State {
             Err(TodoDeletionError::InvalidId)
         }
     }
+
+    pub fn swap_todos(&mut self, id1: usize, id2: usize) -> Result<(), TodoSwapError> {
+        if id1 == id2 {
+            Err(TodoSwapError::EqualIds)
+        } else if id1 >= self.todo.len() {
+            Err(TodoSwapError::FirstInvalid)
+        } else if id2 >= self.todo.len() {
+            Err(TodoSwapError::SecondInvalid)
+        } else {
+            self.todo.swap(id1, id2);
+            Ok(())
+        }
+    }
+
+    pub fn todo_count(&self) -> usize {
+        self.todo.len()
+    }
+
+    pub fn insert_todo(&mut self, todo: String, position: usize) -> Result<(), ()> {
+        if position <= self.todo.len() {
+            self.todo.insert(position, todo);
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
 }
 impl Drop for State {
     fn drop(&mut self) {
@@ -284,6 +310,13 @@ impl Drop for State {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoDeletionError {
     InvalidId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TodoSwapError {
+    SecondInvalid,
+    FirstInvalid,
+    EqualIds,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

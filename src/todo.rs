@@ -1,17 +1,22 @@
-use crate::state::{State, TodoDeletionError};
+use crate::state::{State, TodoDeletionError, TodoSwapError};
 
 pub(crate) fn list_todo(current_state: &crate::state::State) {
-    for todo in current_state
-        .get_todos()
-        .enumerate()
-        .map(|(i, todo)| State::format_todo(i, todo.clone()))
-    {
-        println!("{todo}");
+    if current_state.get_todos().count() == 0 {
+        println!("Your todo list is empty!");
+    } else {
+        for todo in current_state
+            .get_todos()
+            .enumerate()
+            .map(|(i, todo)| State::format_todo(i, todo.clone()))
+        {
+            println!("{todo}");
+        }
     }
 }
 
 pub(crate) fn add_todo(current_state: &mut crate::state::State, name: String) {
     current_state.push_todo(name);
+    println!("Added todo item!");
 }
 
 pub(crate) fn delete_todo(current_state: &mut crate::state::State, id: usize) {
@@ -47,7 +52,7 @@ pub(crate) fn move_todo_above(
     } else if anchor == to_move {
         println!("Can't move a Todo above itself!");
     } else {
-        let to_move_todo = current_state.delete(to_move).unwrap();
+        let to_move_todo = current_state.delete_todo(to_move).unwrap();
         current_state
             .insert_todo(
                 to_move_todo,
@@ -70,7 +75,7 @@ pub(crate) fn move_todo_below(
     } else if anchor == to_move {
         println!("Can't move a Todo above itself!");
     } else {
-        let to_move_todo = current_state.delete(to_move).unwrap();
+        let to_move_todo = current_state.delete_todo(to_move).unwrap();
         current_state
             .insert_todo(
                 to_move_todo,
