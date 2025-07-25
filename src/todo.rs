@@ -1,4 +1,6 @@
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
+use ratatui::style::Stylize;
+use ratatui::text::Line;
 use ratatui::widgets::List;
 use ratatui::{
     Frame,
@@ -8,6 +10,7 @@ use ratatui::{
 };
 use tui_input::{Input, backend::crossterm::EventHandler};
 
+use crate::WindowActionResult;
 use crate::state::{State, TodoDeletionError, TodoSwapError};
 
 pub(crate) fn list_todo(current_state: &crate::state::State) {
@@ -112,25 +115,47 @@ impl TodoWindow {
     pub fn draw(&self, state: &State, frame: &mut Frame) {
         let [list_area, input_area] =
             Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(frame.area());
+
         let width = frame.area().width - 3;
         let scroll = self.input.visual_scroll(width as usize);
-        let style = if self.input_focused {
+        let input_style = if self.input_focused {
             Color::Yellow.into()
         } else {
             Style::default()
         };
         let input = Paragraph::new(self.input.value())
-            .style(style)
+            .style(input_style)
             .scroll((0, scroll as u16))
-            .block(Block::bordered().title("New Todo"));
+            .block(Block::bordered().title(" New Todo "));
         frame.render_widget(input, input_area);
 
+        let list_style = if self.input_focused {
+            Style::default()
+        } else {
+            Color::Yellow.into()
+        };
+        let list_instructions = Line::from(vec![
+            " Move Up ".into(),
+            "<Up>".blue().bold(),
+            " Move Down ".into(),
+            "<Down>".blue().bold(),
+            " Delete ".into(),
+            "<Enter>".blue().bold(),
+            " ".into(),
+        ]);
         let list = List::new(state.get_todos().map(|x| format!("- {x}")))
-            .block(Block::bordered().title("Todo Items"));
+            .style(list_style)
+            .block(if self.input_focused {
+                Block::bordered().title(" Todo Items ")
+            } else {
+                Block::bordered()
+                    .title(" Todo Items ")
+                    .title_bottom(list_instructions.centered())
+            });
         frame.render_widget(list, list_area);
     }
 
-    pub fn handle_key_event(&mut self, state: &mut State, event: &Event) {
+    pub fn handle_key_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
         match event {
             Event::Key(KeyEvent {
                 code: KeyCode::Tab, ..
@@ -141,8 +166,20 @@ impl TodoWindow {
                 code: KeyCode::Enter,
                 ..
             }) => {
-                state.push_todo(self.input.value().to_string());
-                self.input.reset();
+                if self.input_focused {
+                    state.push_todo(self.input.value().to_string());
+                    self.input.reset();
+                }
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('q'),
+                ..
+            }) => {
+                if self.input_focused {
+                    self.input.handle_event(event);
+                } else {
+                    return WindowActionResult::Exit;
+                }
             }
             _ => {
                 if self.input_focused {
@@ -150,5 +187,6 @@ impl TodoWindow {
                 }
             }
         }
+        WindowActionResult::Continue
     }
 }

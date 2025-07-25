@@ -92,19 +92,23 @@ impl App {
     fn handle_events(&mut self) -> std::io::Result<()> {
         // NOTE: this is blocking!
         let evt = event::read()?;
-        if let Event::Key(KeyEvent {
-            code: KeyCode::Char('q'),
-            ..
-        }) = evt
-        {
-            self.exit = true;
-        } else {
-            match self.current_window {
-                AppWindow::TodoWindow => self.todo_window.handle_key_event(&mut self.state, &evt),
-            }
+        let result = match self.current_window {
+            AppWindow::TodoWindow => self.todo_window.handle_key_event(&mut self.state, &evt),
         };
+        match result {
+            WindowActionResult::Continue => (),
+            WindowActionResult::Exit => {
+                self.exit = true;
+            }
+        }
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowActionResult {
+    Continue,
+    Exit,
 }
 
 fn load_state() -> Result<State> {
