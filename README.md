@@ -5,10 +5,6 @@ and picks a task for you to do in those pomodoro sessions so that you can't proc
 
 # TODO
 
-## Feature: Header
-
-A header which shows tabs
-
 ## Feature: Change state path
 
 It should be possible to use an environment variable to change where the state is loaded from and saved to.
