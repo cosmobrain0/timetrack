@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     crossterm::event::{Event, KeyCode, KeyEvent},
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Style, Stylize},
     text::Line,
     widgets::{Block, Borders, List, Paragraph, Widget, Wrap},
@@ -89,7 +89,7 @@ impl TrackWindow {
         }
     }
 
-    pub fn draw(&self, state: &State, frame: &mut Frame) {
+    pub fn draw(&self, state: &State, frame: &mut Frame, area: Rect) {
         let [
             activities_area,
             text_input_area,
@@ -97,7 +97,7 @@ impl TrackWindow {
             ongoing_area,
         ] = {
             let [upper_area, lower_area] =
-                Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(frame.area());
+                Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(area);
             let [activities_area, ongoing_area] =
                 Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)])
                     .areas(upper_area);
