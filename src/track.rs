@@ -10,13 +10,16 @@ use ratatui::{
     crossterm::event::{Event, KeyCode, KeyEvent},
     layout::{Constraint, Layout},
     style::{Color, Style, Stylize},
+    symbols::line::THICK_HORIZONTAL_DOWN,
     text::Line,
     widgets::{Block, Borders, List, Paragraph, Widget, Wrap},
 };
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::{
-    WindowActionResult, instruction_line,
+    WindowActionResult,
+    input_widget::InputWidget,
+    instruction_line,
     state::{self, Activity, ActivityId, StartActivityError, State},
 };
 
@@ -325,7 +328,8 @@ impl TrackWindow {
                 Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)])
                     .areas(upper_area);
             let [text_input_area, timer_input_area] =
-                Layout::horizontal([Constraint::Min(15), Constraint::Min(6)]).areas(lower_area);
+                Layout::horizontal([Constraint::Percentage(70), Constraint::Min(6)])
+                    .areas(lower_area);
             [
                 activities_area,
                 text_input_area,
@@ -361,6 +365,14 @@ impl TrackWindow {
             },
             ongoing_area,
         );
+        frame.render_widget(
+            &InputWidget {
+                is_focused: self.focused_widget == TrackWindowWidget::TextInput,
+                input: &self.text_input,
+                title: "Add Activity",
+            },
+            text_input_area,
+        );
     }
 
     pub fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
@@ -379,7 +391,12 @@ impl TrackWindow {
                 code: KeyCode::Enter,
                 ..
             }) => {
-                todo!()
+                if self.focused_widget == TrackWindowWidget::TextInput {
+                    if !self.text_input.value().is_empty() {
+                        // FIXME: the target_minutes should could from the timer_input!
+                        state.add_activity(self.text_input.value().to_string(), 60);
+                    }
+                }
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char('q'),
@@ -406,19 +423,25 @@ impl TrackWindow {
             Event::Key(KeyEvent {
                 code: KeyCode::Char(' '),
                 ..
-            }) => {
-                if let Some(id) = state
-                    .activities()
-                    .nth(self.selected_activity)
-                    .map(Activity::id)
-                {
-                    if state.current_id().is_some_and(|x| x == id) {
-                        let _ = state.end_activity(false);
-                    } else {
-                        let _ = state.start_activity(id);
+            }) => match self.focused_widget {
+                TrackWindowWidget::Activities => {
+                    if let Some(id) = state
+                        .activities()
+                        .nth(self.selected_activity)
+                        .map(Activity::id)
+                    {
+                        if state.current_id().is_some_and(|x| x == id) {
+                            let _ = state.end_activity(false);
+                        } else {
+                            let _ = state.start_activity(id);
+                        }
                     }
                 }
-            }
+                TrackWindowWidget::TextInput => {
+                    self.text_input.handle_event(event);
+                }
+                _ => (),
+            },
             Event::Key(KeyEvent {
                 code: KeyCode::Backspace,
                 ..
@@ -428,7 +451,18 @@ impl TrackWindow {
                     .nth(self.selected_activity)
                     .map(Activity::id)
                 {
-                    let _ = state.delete(id);
+                    match self.focused_widget {
+                        TrackWindowWidget::Activities => {
+                            let _ = state.delete(id);
+                            self.selected_activity = self
+                                .selected_activity
+                                .min(state.activities_count().saturating_sub(1));
+                        }
+                        TrackWindowWidget::TextInput => {
+                            self.text_input.handle_event(event);
+                        }
+                        _ => (),
+                    }
                 }
             }
             _ => {

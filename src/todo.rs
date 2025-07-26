@@ -11,6 +11,7 @@ use ratatui::{
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::WindowActionResult;
+use crate::input_widget::InputWidget;
 use crate::state::{State, TodoDeletionError, TodoSwapError};
 
 pub(crate) struct TodoWindow {
@@ -31,22 +32,14 @@ impl TodoWindow {
         let [list_area, input_area] =
             Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(frame.area());
 
-        let width = frame.area().width - 3;
-        let scroll = self.input.visual_scroll(width as usize);
-        let input_style = if self.input_focused {
-            Color::Yellow.into()
-        } else {
-            Style::default()
-        };
-        let input = Paragraph::new(if self.input_focused && self.input.value().is_empty() {
-            "Type Here".italic().gray()
-        } else {
-            self.input.value().into()
-        })
-        .style(input_style)
-        .scroll((0, scroll as u16))
-        .block(Block::bordered().title(" New Todo "));
-        frame.render_widget(input, input_area);
+        frame.render_widget(
+            &InputWidget {
+                is_focused: self.input_focused,
+                input: &self.input,
+                title: "New Todo",
+            },
+            input_area,
+        );
 
         let list_style = if self.input_focused {
             Style::default()
