@@ -1,4 +1,5 @@
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
+use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::widgets::List;
 use ratatui::{
@@ -27,9 +28,9 @@ impl TodoWindow {
         }
     }
 
-    pub fn draw(&self, state: &State, frame: &mut Frame) {
+    pub fn draw(&self, state: &State, frame: &mut Frame, area: Rect) {
         let [list_area, input_area] =
-            Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(frame.area());
+            Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(area);
 
         frame.render_widget(
             &InputWidget {

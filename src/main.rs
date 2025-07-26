@@ -8,8 +8,10 @@ use std::time::Duration;
 use chrono::Utc;
 use color_eyre::Result;
 use ratatui::crossterm::event;
-use ratatui::style::Stylize;
+use ratatui::layout::{Constraint, Layout};
+use ratatui::style::{Color, Stylize};
 use ratatui::text::Line;
+use ratatui::widgets::{Block, Paragraph, Widget};
 use ratatui::{DefaultTerminal, Frame};
 use state::{State, StateBuilder};
 use todo::TodoWindow;
@@ -21,30 +23,6 @@ fn main() -> Result<()> {
     let result = App::new()?.run(&mut terminal);
     ratatui::restore();
     result
-
-    // match args.command {
-    //     Some(SubCommand::Add {
-    //         name,
-    //         target_minutes,
-    //     }) => add_activity(&mut current_state, name, target_minutes),
-    //     Some(SubCommand::List) => list_activities(&current_state),
-    //     Some(SubCommand::Delete { id }) => del_activity(&mut current_state, id),
-    //     Some(SubCommand::Start { id }) => start_activity(&mut current_state, id),
-    //     Some(SubCommand::End) => end_activity(&mut current_state),
-    //     Some(SubCommand::Register { id, minutes }) => {
-    //         register_time(&mut current_state, id, minutes)
-    //     }
-    //     Some(SubCommand::Overwrite { id, minutes }) => {
-    //         overwrite_time(&mut current_state, id, minutes)
-    //     }
-    //     None => list_recommended_action(&current_state),
-    //     Some(SubCommand::Pomo { minutes }) => {
-    //         pomodoro(&mut current_state, minutes);
-    //     }
-    //     Some(SubCommand::ChangeTarget { id, minutes }) => {
-    //         change_target_time(&mut current_state, id, minutes)
-    //     }
-    // };
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,9 +59,23 @@ impl App {
     }
 
     fn draw(&self, frame: &mut Frame) {
+        let [header_area, main_area] =
+            Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(frame.area());
+
+        frame.render_widget(
+            &HeaderWidget {
+                tabs: vec!["Track Activities", "Todo List"],
+                selected: match self.current_window {
+                    AppWindow::Todo => 1,
+                    AppWindow::Track => 0,
+                },
+            },
+            header_area,
+        );
+
         match self.current_window {
-            AppWindow::Todo => self.todo_window.draw(&self.state, frame),
-            AppWindow::Track => self.track_window.draw(&self.state, frame),
+            AppWindow::Todo => self.todo_window.draw(&self.state, frame, main_area),
+            AppWindow::Track => self.track_window.draw(&self.state, frame, main_area),
         }
     }
 
@@ -148,16 +140,26 @@ fn instruction_line(values: Vec<(&str, &str)>) -> Line<'static> {
     .centered()
 }
 
-mod tests {
-    #[test]
-    fn notifications_work() {
-        use mac_notification_sys::*;
-        send_notification(
-            "This is a title!",
-            Some("this is a really really really really long subtitle"),
-            "Here's the body!",
-            Some(Notification::new().asynchronous(true).wait_for_click(true)),
-        )
-        .unwrap();
+struct HeaderWidget<'a> {
+    tabs: Vec<&'a str>,
+    selected: usize,
+}
+impl<'a> Widget for &HeaderWidget<'a> {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        Paragraph::new(vec![Line::from(
+            self.tabs
+                .iter()
+                .enumerate()
+                .map(|(i, x)| (i + 1, x))
+                .map(|(i, x)| (i == self.selected + 1, format!("{x} [{i}] ")))
+                .map(|(selected, text)| if selected { text.yellow() } else { text.into() })
+                .collect::<Vec<_>>(),
+        )])
+        .block(Block::bordered().style(Color::DarkGray))
+        .left_aligned()
+        .render(area, buf);
     }
 }
