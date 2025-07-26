@@ -3,6 +3,8 @@
 This is a terminal application for managing todo lists. It can track one-off tasks, and tasks that need to be worked on for a specific amount of time every day. It also allows you to start pomodoro sessions,
 and picks a task for you to do in those pomodoro sessions so that you can't procrastinate one task by only ever working on other tasks.
 
+This application currently only works on MacOS because I couldn't find a cross-platform notification library.
+
 # TODO
 
 ## Feature: Change state path
@@ -11,7 +13,11 @@ It should be possible to use an environment variable to change where the state i
 
 ## Refactoring: Constant Updates
 
-The state should be rarely saved to disk: when the user quits the application, and when they start a pomodoro session.
+The state should be rarely saved to disk: only when the user quits the application, and when they start a pomodoro session.
+
+## Bug Fix: Notifications Feature Flag
+
+Notifications should be hidden behind a feature flag so that people on other operating systems can still use the app.
 
 ## Feature: Good Start
 
@@ -36,6 +42,10 @@ It should be possible to give buckets multi-line descriptions, which can be expa
 ## Feature: Edit bucket
 
 It should be possible to edit bucket names and descriptions and to edit todo item names and descriptions.
+
+## Feature: Cross-Platform Notifications
+
+Notifications should work on Windows, Linux and MacOS.
 
 # Contributing
 
