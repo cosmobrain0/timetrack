@@ -269,7 +269,7 @@ impl State {
     }
 
     pub(crate) fn pomo_minutes(&self) -> Option<usize> {
-        self.current.as_ref().map(|x| x.pomo_minutes).flatten()
+        self.current.as_ref().and_then(|x| x.pomo_minutes)
     }
 }
 impl State {

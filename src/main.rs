@@ -136,13 +136,12 @@ fn instruction_line(values: Vec<(&str, &str)>) -> Line<'static> {
     Line::from(
         values
             .into_iter()
-            .map(|(action, keybind)| {
+            .flat_map(|(action, keybind)| {
                 vec![
                     format!(" {action} ").into(),
                     format!("<{keybind}>").blue().bold(),
                 ]
             })
-            .flatten()
             .chain([" ".into()])
             .collect::<Vec<_>>(),
     )

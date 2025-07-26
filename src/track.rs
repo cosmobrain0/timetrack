@@ -103,15 +103,15 @@ use crate::{
 //     }
 // }
 
-pub enum FindRecommendedActionError<'a> {
+pub enum FindRecommendedActionError {
     NoMoreTasks,
-    Ongoing(&'a Activity),
-    OngoingCompleted(&'a Activity),
+    Ongoing,
+    OngoingCompleted,
 }
 
 pub fn find_recommended_action(
     current_state: &State,
-) -> Result<&Activity, FindRecommendedActionError<'_>> {
+) -> Result<&Activity, FindRecommendedActionError> {
     if let Some(current_task) = current_state.current_activity() {
         if current_task.acheived_minutes()
             + current_state
@@ -121,9 +121,9 @@ pub fn find_recommended_action(
                 .max(0) as usize
             >= current_task.target_minutes()
         {
-            Err(FindRecommendedActionError::OngoingCompleted(current_task))
+            Err(FindRecommendedActionError::OngoingCompleted)
         } else {
-            Err(FindRecommendedActionError::Ongoing(current_task))
+            Err(FindRecommendedActionError::Ongoing)
         }
     } else if let Some(activity) = current_state
         .activities()
@@ -241,7 +241,7 @@ impl TrackWindow {
         );
         frame.render_widget(
             &OngoingWidget {
-                ongoing: state.current_activity().map(Activity::clone),
+                ongoing: state.current_activity().cloned(),
                 pomodoro: state.pomo_minutes().map(|total_minutes| {
                     let acheived_time = state
                         .current_session_duration()
@@ -428,7 +428,7 @@ impl TrackWindow {
                 code: KeyCode::Char('r'),
                 ..
             }) if self.focused_widget == Activities => {
-                if let Some(_) = self.selected_activity_id(state) {
+                if self.selected_activity_id(state).is_some() {
                     self.timer_input_purpose = TimerInputPurpose::RegisterActivity;
                     self.focused_widget = TimerInput;
                 }
@@ -437,7 +437,7 @@ impl TrackWindow {
                 code: KeyCode::Char('o'),
                 ..
             }) if self.focused_widget == Activities => {
-                if let Some(_) = self.selected_activity_id(state) {
+                if self.selected_activity_id(state).is_some() {
                     self.timer_input_purpose = TimerInputPurpose::OverwriteActivity;
                     self.focused_widget = TimerInput;
                 }
@@ -461,7 +461,7 @@ impl TrackWindow {
                 code: KeyCode::Char('c'),
                 ..
             }) if self.focused_widget == Activities => {
-                if let Some(_) = self.selected_activity_id(state) {
+                if self.selected_activity_id(state).is_some() {
                     self.timer_input_purpose = TimerInputPurpose::ChangeTarget;
                     self.focused_widget = TimerInput;
                 }
@@ -558,7 +558,7 @@ impl<'a> Widget for &ActivitiesWidget<'a> {
                     if i == self.selected_activity && self.is_focused {
                         x.blue().bold()
                     } else {
-                        x.into()
+                        x
                     }
                 }),
         )
@@ -604,9 +604,9 @@ impl<'a> Widget for &OngoingWidget<'a> {
                     self.state.format_activity(ongoing, None),
                     Line::from(format!(
                         "Work for {r}min! Acheived {a} / {t} min",
-                        r = remaining_time.to_string(),
-                        a = acheived_time.to_string(),
-                        t = (acheived_time + remaining_time).to_string()
+                        r = remaining_time,
+                        a = acheived_time,
+                        t = (acheived_time + remaining_time)
                     )),
                 ])
                 .wrap(Wrap { trim: true })
