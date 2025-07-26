@@ -138,8 +138,10 @@ fn instruction_line(values: Vec<(&str, &str)>) -> Line<'static> {
                 ]
             })
             .flatten()
+            .chain([" ".into()])
             .collect::<Vec<_>>(),
     )
+    .centered()
 }
 
 mod tests {

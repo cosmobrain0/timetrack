@@ -295,6 +295,7 @@ enum TimerInputPurpose {
     NewActivity,
     OverwriteActivity(ActivityId),
     RegisterActivity(ActivityId),
+    ChangeTarget(ActivityId),
 }
 
 pub struct TrackWindow {
@@ -373,123 +374,183 @@ impl TrackWindow {
             },
             text_input_area,
         );
+        frame.render_widget(
+            &TimerInputWidget {
+                value: self.timer_input,
+                is_focused: self.focused_widget == TrackWindowWidget::TimerInput,
+                purpose: self.timer_input_purpose,
+                selected_activity_name: self.selected_activity_name(state),
+            },
+            timer_input_area,
+        );
     }
 
     pub fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
+        use TrackWindowWidget::*;
         match event {
             Event::Key(KeyEvent {
                 code: KeyCode::Tab, ..
             }) => {
                 self.focused_widget = match self.focused_widget {
-                    TrackWindowWidget::Activities => TrackWindowWidget::TextInput,
-                    TrackWindowWidget::TextInput => TrackWindowWidget::TimerInput,
-                    TrackWindowWidget::TimerInput => TrackWindowWidget::Ongoing,
-                    TrackWindowWidget::Ongoing => TrackWindowWidget::Activities,
+                    Activities => TextInput,
+                    TextInput => TimerInput,
+                    TimerInput => Ongoing,
+                    Ongoing => Activities,
                 }
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Enter,
                 ..
-            }) => {
-                if self.focused_widget == TrackWindowWidget::TextInput {
-                    if !self.text_input.value().is_empty() {
-                        // FIXME: the target_minutes should could from the timer_input!
-                        state.add_activity(self.text_input.value().to_string(), 60);
-                    }
+            }) if self.focused_widget == TextInput => {
+                if !self.text_input.value().is_empty() {
+                    self.timer_input_purpose = TimerInputPurpose::NewActivity;
+                    self.focused_widget = TimerInput;
                 }
             }
             Event::Key(KeyEvent {
+                code: KeyCode::Enter,
+                ..
+            }) if self.focused_widget == TimerInput => match self.timer_input_purpose {
+                TimerInputPurpose::NewActivity => {
+                    if !self.text_input.value().is_empty() {
+                        state.add_activity(self.text_input.value().to_string(), self.timer_input);
+                        self.text_input.reset();
+                        self.focused_widget = Activities;
+                    } else {
+                        self.focused_widget = TextInput;
+                    }
+                }
+                TimerInputPurpose::OverwriteActivity(activity_id) => {
+                    let _ = state.overwrite_time(activity_id, self.timer_input);
+                    self.focused_widget = Activities;
+                    self.timer_input_purpose = TimerInputPurpose::NewActivity;
+                }
+                TimerInputPurpose::RegisterActivity(activity_id) => {
+                    let _ = state.add_time(activity_id, self.timer_input);
+                    self.focused_widget = Activities;
+                    self.timer_input_purpose = TimerInputPurpose::NewActivity;
+                }
+                TimerInputPurpose::ChangeTarget(activity_id) => {
+                    if let Some(activity) = state.get_by_id_mut(activity_id) {
+                        activity.set_target_minutes(self.timer_input);
+                    }
+                    self.focused_widget = Activities;
+                    self.timer_input_purpose = TimerInputPurpose::NewActivity;
+                }
+            },
+            Event::Key(KeyEvent {
                 code: KeyCode::Char('q'),
                 ..
-            }) => {
-                if self.focused_widget == TrackWindowWidget::TextInput {
-                    self.text_input.handle_event(event);
-                } else {
-                    return WindowActionResult::Exit;
-                }
+            }) if self.focused_widget != TextInput => {
+                return WindowActionResult::Exit;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Down,
                 ..
-            }) => {
+            }) if self.focused_widget == Activities => {
                 self.selected_activity =
                     (self.selected_activity + 1).min(state.activities_count().saturating_sub(1));
             }
             Event::Key(KeyEvent {
+                code: KeyCode::Down,
+                ..
+            }) if self.focused_widget == TimerInput => {
+                self.timer_input = self.timer_input.saturating_sub(1);
+            }
+            Event::Key(KeyEvent {
                 code: KeyCode::Up, ..
-            }) => {
+            }) if self.focused_widget == Activities => {
                 self.selected_activity = self.selected_activity.saturating_sub(1);
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Up, ..
+            }) if self.focused_widget == TimerInput => {
+                self.timer_input = self.timer_input.saturating_add(1);
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char(' '),
                 ..
-            }) => match self.focused_widget {
-                TrackWindowWidget::Activities => {
-                    if let Some(id) = state
-                        .activities()
-                        .nth(self.selected_activity)
-                        .map(Activity::id)
-                    {
-                        if state.current_id().is_some_and(|x| x == id) {
-                            let _ = state.end_activity(false);
-                        } else {
-                            let _ = state.start_activity(id);
-                        }
+            }) if self.focused_widget == Activities => {
+                if let Some(id) = self.selected_activity_id(state) {
+                    if state.current_id().is_some_and(|x| x == id) {
+                        let _ = state.end_activity(false);
+                    } else {
+                        let _ = state.start_activity(id);
                     }
                 }
-                TrackWindowWidget::TextInput => {
-                    self.text_input.handle_event(event);
-                }
-                _ => (),
-            },
+            }
             Event::Key(KeyEvent {
                 code: KeyCode::Backspace,
                 ..
-            }) => {
+            }) if self.focused_widget == Activities => {
                 if let Some(id) = state
                     .activities()
                     .nth(self.selected_activity)
                     .map(Activity::id)
                 {
-                    match self.focused_widget {
-                        TrackWindowWidget::Activities => {
-                            let _ = state.delete(id);
-                            self.selected_activity = self
-                                .selected_activity
-                                .min(state.activities_count().saturating_sub(1));
-                        }
-                        TrackWindowWidget::TextInput => {
-                            self.text_input.handle_event(event);
-                        }
-                        _ => (),
-                    }
+                    let _ = state.delete(id);
+                    self.selected_activity = self
+                        .selected_activity
+                        .min(state.activities_count().saturating_sub(1));
                 }
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Backspace,
+                ..
+            }) if self.focused_widget == TimerInput => {
+                self.timer_input = 0;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char('1'),
                 ..
-            }) => match self.focused_widget {
-                TrackWindowWidget::Ongoing
-                | TrackWindowWidget::Activities
-                | TrackWindowWidget::TimerInput => return WindowActionResult::FirstWindow,
-                TrackWindowWidget::TextInput => (),
-            },
+            }) if self.focused_widget != TextInput => {
+                return WindowActionResult::FirstWindow;
+            }
             Event::Key(KeyEvent {
                 code: KeyCode::Char('2'),
                 ..
-            }) => match self.focused_widget {
-                TrackWindowWidget::Ongoing
-                | TrackWindowWidget::Activities
-                | TrackWindowWidget::TimerInput => return WindowActionResult::SecondWindow,
-                TrackWindowWidget::TextInput => (),
-            },
+            }) if self.focused_widget != TextInput => {
+                return WindowActionResult::SecondWindow;
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('r'),
+                ..
+            }) if self.focused_widget == Activities => {
+                if let Some(activity_id) = self.selected_activity_id(state) {
+                    self.timer_input_purpose = TimerInputPurpose::RegisterActivity(activity_id);
+                    self.focused_widget = TimerInput;
+                }
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('o'),
+                ..
+            }) if self.focused_widget == Activities => {
+                if let Some(activity_id) = self.selected_activity_id(state) {
+                    self.timer_input_purpose = TimerInputPurpose::OverwriteActivity(activity_id);
+                    self.focused_widget = TimerInput;
+                }
+            }
             _ => {
-                if self.focused_widget == TrackWindowWidget::TextInput {
+                if self.focused_widget == TextInput {
                     self.text_input.handle_event(event);
                 }
             }
         }
         WindowActionResult::Continue
+    }
+
+    fn selected_activity_id(&self, state: &State) -> Option<ActivityId> {
+        state
+            .activities()
+            .nth(self.selected_activity)
+            .map(Activity::id)
+    }
+
+    fn selected_activity_name<'a>(&self, state: &'a State) -> Option<&'a str> {
+        state
+            .activities()
+            .nth(self.selected_activity)
+            .map(Activity::name)
     }
 }
 
@@ -504,8 +565,8 @@ impl<'a> Widget for &ActivitiesWidget<'a> {
         Self: Sized,
     {
         let activities_instructions = instruction_line(vec![
-            ("Move Up", "Up"),
-            ("Move Down", "Down"),
+            ("Scroll Up", "Up"),
+            ("Scroll Down", "Down"),
             ("Start", "Space"),
             ("Delete", "Backspace"),
             ("Register Time", "R"),
@@ -597,4 +658,56 @@ impl<'a> Widget for &OngoingWidget<'a> {
 struct PomodoroInfo {
     acheived_time: usize,
     remaining_time: usize,
+}
+
+struct TimerInputWidget<'a> {
+    value: usize,
+    is_focused: bool,
+    purpose: TimerInputPurpose,
+    selected_activity_name: Option<&'a str>,
+}
+impl<'a> Widget for &TimerInputWidget<'a> {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        Paragraph::new(format!("{value}min", value = self.value))
+            .centered()
+            .style(if self.is_focused {
+                Color::Yellow.into()
+            } else {
+                Style::default()
+            })
+            .block(
+                Block::bordered()
+                    .title(match self.purpose {
+                        TimerInputPurpose::NewActivity => " New Activity Target ".to_string(),
+                        TimerInputPurpose::OverwriteActivity(x) => {
+                            format!(
+                                " Overwrite Time for {}",
+                                self.selected_activity_name.unwrap_or_default()
+                            )
+                        }
+                        TimerInputPurpose::RegisterActivity(x) => format!(
+                            " Register Time for {}",
+                            self.selected_activity_name.unwrap_or_default()
+                        ),
+                        TimerInputPurpose::ChangeTarget(x) => format!(
+                            " Change Target for {} ",
+                            self.selected_activity_name.unwrap_or_default()
+                        ),
+                    })
+                    .title_bottom(if self.is_focused {
+                        instruction_line(vec![
+                            ("+1", "Up"),
+                            ("-1", "Down"),
+                            ("Reset", "Backspace"),
+                            ("Confirm", "Enter"),
+                        ])
+                    } else {
+                        Line::from(vec![])
+                    }),
+            )
+            .render(area, buf);
+    }
 }

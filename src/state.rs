@@ -266,6 +266,10 @@ impl State {
             .find(|activity| activity.id == ActivityId(id))
     }
 
+    pub(crate) fn get_by_id_mut(&mut self, id: ActivityId) -> Option<&mut Activity> {
+        self.get_by_raw_id_mut(id.0)
+    }
+
     pub(crate) fn activities_count(&self) -> usize {
         self.activities.len()
     }

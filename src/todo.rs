@@ -10,9 +10,9 @@ use ratatui::{
 };
 use tui_input::{Input, backend::crossterm::EventHandler};
 
-use crate::WindowActionResult;
 use crate::input_widget::InputWidget;
 use crate::state::{State, TodoDeletionError, TodoSwapError};
+use crate::{WindowActionResult, instruction_line};
 
 pub(crate) struct TodoWindow {
     input_focused: bool,
@@ -46,18 +46,12 @@ impl TodoWindow {
         } else {
             Color::Yellow.into()
         };
-        let list_instructions = Line::from(vec![
-            " Move Up ".into(),
-            "<Up>".blue().bold(),
-            " Move Down ".into(),
-            "<Down>".blue().bold(),
-            " Delete ".into(),
-            "<Enter>".blue().bold(),
-            " Move Up ".into(),
-            "<Left>".blue().bold(),
-            " Move Down ".into(),
-            "<Right>".blue().bold(),
-            " ".into(),
+        let list_instructions = instruction_line(vec![
+            ("Scroll Up", "Up"),
+            ("Scroll Down", "Down"),
+            ("Delete", "Enter"),
+            ("Move Up", "Left"),
+            ("Move Down", "Right"),
         ]);
         let list = List::new(state.get_todos().enumerate().map(|(i, x)| {
             if !self.input_focused && i == self.selected {
