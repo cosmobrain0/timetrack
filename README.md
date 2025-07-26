@@ -5,11 +5,11 @@ and picks a task for you to do in those pomodoro sessions so that you can't proc
 
 This application currently only works on MacOS because I couldn't find a cross-platform notification library.
 
+This application stores state in a json file (defaults to `$HOME/.timetrack/state.json`). Before running this program for the first time, make sure the file exists and contains `{}` (and nothing else). You can change
+the file path by setting the `TIMETRACK_STATE_FILE_PATH` to the **full** to the file (ending with the file name). This file should also either have `{}` in it or nothing else, or it should have save data which was generated
+by this program.
+
 # TODO
-
-## Feature: Change state path
-
-It should be possible to use an environment variable to change where the state is loaded from and saved to.
 
 ## Refactoring: Constant Updates
 
@@ -46,6 +46,10 @@ It should be possible to edit bucket names and descriptions and to edit todo ite
 ## Feature: Cross-Platform Notifications
 
 Notifications should work on Windows, Linux and MacOS.
+
+## Feature: Error Info
+
+When something goes wrong (e.g. invalid user input), the user should be notified in an appropriate way.
 
 # Contributing
 
