@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
-use colored::Colorize;
+use ratatui::{style::Stylize, text::Line};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,14 +74,8 @@ impl State {
         id
     }
 
-    pub fn activities(&self) -> Vec<&Activity> {
-        self.activities.iter().collect()
-    }
-
-    pub fn get_by_raw_id(&self, id: usize) -> Option<ActivityId> {
-        self.activities
-            .iter()
-            .find_map(|activity| (activity.id == ActivityId(id)).then_some(ActivityId(id)))
+    pub fn activities(&self) -> std::slice::Iter<'_, Activity> {
+        self.activities.iter()
     }
 
     fn get_index_by_id(&self, id: ActivityId) -> Option<usize> {
@@ -197,7 +191,7 @@ impl State {
         self.current_id().map(|id| self.activity_by_id(id).unwrap())
     }
 
-    pub fn format_activity(&self, activity: &Activity, max_name_length: Option<usize>) -> String {
+    pub fn format_activity(&self, activity: &Activity, max_name_length: Option<usize>) -> Line {
         let pad = |s: &str| {
             if let Some(max_name_length) = max_name_length {
                 let current_length = s.chars().count();
@@ -215,18 +209,8 @@ impl State {
             };
         let target = activity.target_minutes();
         let remaining = target.saturating_sub(acheived);
-        let highlight_colour = if ongoing {
-            if acheived < target { "blue" } else { "red" }
-        } else if acheived < target {
-            "white"
-        } else {
-            "green"
-        };
-        format!(
-            "{id} {status} {name} {remaining} / {target}",
-            id = activity.id().to_string().color(highlight_colour),
-            name = pad(activity.name()),
-            status = if ongoing {
+        let status = {
+            let status = if ongoing {
                 if acheived < target {
                     "ONGOING "
                 } else {
@@ -236,9 +220,29 @@ impl State {
                 "NOT DONE"
             } else {
                 "COMPLETE"
+            };
+
+            if ongoing {
+                if acheived < target {
+                    status.blue()
+                } else {
+                    status.red()
+                }
+            } else if acheived < target {
+                status.into()
+            } else {
+                status.green()
             }
-            .color(highlight_colour)
-        )
+        };
+        Line::from(vec![
+            status,
+            " ".into(),
+            pad(activity.name()).into(),
+            " ".into(),
+            remaining.to_string().into(),
+            " / ".into(),
+            target.to_string().into(),
+        ])
     }
 
     fn save_state(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -255,18 +259,22 @@ impl State {
             .iter_mut()
             .find(|activity| activity.id == ActivityId(id))
     }
+
+    pub(crate) fn get_by_id_mut(&mut self, id: ActivityId) -> Option<&mut Activity> {
+        self.get_by_raw_id_mut(id.0)
+    }
+
+    pub(crate) fn activities_count(&self) -> usize {
+        self.activities.len()
+    }
+
+    pub(crate) fn pomo_minutes(&self) -> Option<usize> {
+        self.current.as_ref().map(|x| x.pomo_minutes).flatten()
+    }
 }
 impl State {
     pub fn get_todos(&self) -> std::slice::Iter<'_, String> {
         self.todo.iter()
-    }
-
-    pub fn format_todo(index: usize, todo: String) -> String {
-        format!("{id}: {todo}", id = Self::format_todo_id(index))
-    }
-
-    pub fn format_todo_id(id: usize) -> String {
-        format!("[TD{id}]")
     }
 
     pub fn push_todo(&mut self, todo: String) {
@@ -296,15 +304,6 @@ impl State {
 
     pub fn todo_count(&self) -> usize {
         self.todo.len()
-    }
-
-    pub fn insert_todo(&mut self, todo: String, position: usize) -> Result<(), ()> {
-        if position <= self.todo.len() {
-            self.todo.insert(position, todo);
-            Ok(())
-        } else {
-            Err(())
-        }
     }
 }
 impl Drop for State {

@@ -1,129 +1,123 @@
+mod input_widget;
 mod state;
 mod todo;
 mod track;
 
+use std::time::Duration;
+
 use chrono::Utc;
-use clap::{Parser, Subcommand};
-use clap_derive::Args;
+use color_eyre::Result;
+use ratatui::crossterm::event;
+use ratatui::style::Stylize;
+use ratatui::text::Line;
+use ratatui::{DefaultTerminal, Frame};
 use state::{State, StateBuilder};
-use todo::*;
-use track::*;
+use todo::TodoWindow;
+use track::TrackWindow;
 
-#[derive(Parser, Debug)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<SubCommand>,
+fn main() -> Result<()> {
+    color_eyre::install()?;
+    let mut terminal = ratatui::init();
+    let result = App::new()?.run(&mut terminal);
+    ratatui::restore();
+    result
+
+    // match args.command {
+    //     Some(SubCommand::Add {
+    //         name,
+    //         target_minutes,
+    //     }) => add_activity(&mut current_state, name, target_minutes),
+    //     Some(SubCommand::List) => list_activities(&current_state),
+    //     Some(SubCommand::Delete { id }) => del_activity(&mut current_state, id),
+    //     Some(SubCommand::Start { id }) => start_activity(&mut current_state, id),
+    //     Some(SubCommand::End) => end_activity(&mut current_state),
+    //     Some(SubCommand::Register { id, minutes }) => {
+    //         register_time(&mut current_state, id, minutes)
+    //     }
+    //     Some(SubCommand::Overwrite { id, minutes }) => {
+    //         overwrite_time(&mut current_state, id, minutes)
+    //     }
+    //     None => list_recommended_action(&current_state),
+    //     Some(SubCommand::Pomo { minutes }) => {
+    //         pomodoro(&mut current_state, minutes);
+    //     }
+    //     Some(SubCommand::ChangeTarget { id, minutes }) => {
+    //         change_target_time(&mut current_state, id, minutes)
+    //     }
+    // };
 }
 
-#[derive(Clone, Debug, Subcommand)]
-enum SubCommand {
-    Add {
-        name: String,
-        target_minutes: usize,
-    },
-    List,
-    Delete {
-        id: usize,
-    },
-    Start {
-        id: usize,
-    },
-    End,
-    Register {
-        id: usize,
-        minutes: usize,
-    },
-    Overwrite {
-        id: usize,
-        minutes: usize,
-    },
-    Pomo {
-        #[arg(default_value_t = 30)]
-        minutes: usize,
-    },
-    #[command(alias = "ct")]
-    ChangeTarget {
-        id: usize,
-        minutes: usize,
-    },
-    #[command(alias = "td")]
-    Todo(TodoArgs),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AppWindow {
+    Todo,
+    Track,
 }
 
-#[derive(Debug, Clone, Args)]
-struct TodoArgs {
-    #[command(subcommand)]
-    command: TodoSubCommand,
+struct App {
+    state: State,
+    exit: bool,
+    todo_window: TodoWindow,
+    track_window: TrackWindow,
+    current_window: AppWindow,
 }
+impl App {
+    fn new() -> Result<Self> {
+        let state = load_state()?;
+        Ok(Self {
+            state,
+            exit: false,
+            todo_window: TodoWindow::new(),
+            track_window: TrackWindow::new(),
+            current_window: AppWindow::Track,
+        })
+    }
 
-#[derive(Debug, Clone, Subcommand)]
-enum TodoSubCommand {
-    List,
-    Add {
-        name: String,
-    },
-    Delete {
-        id: usize,
-    },
-    Swap {
-        id1: usize,
-        id2: usize,
-    },
-    #[command(alias = "ma")]
-    MoveAbove {
-        anchor: usize,
-        to_move: usize,
-    },
-    #[command(alias = "mb")]
-    MoveBelow {
-        anchor: usize,
-        to_move: usize,
-    },
-}
+    fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
+        while !self.exit {
+            terminal.draw(|frame| self.draw(frame))?;
+            self.handle_events()?;
+        }
+        Ok(())
+    }
 
-fn main() {
-    let args = Cli::parse();
+    fn draw(&self, frame: &mut Frame) {
+        match self.current_window {
+            AppWindow::Todo => self.todo_window.draw(&self.state, frame),
+            AppWindow::Track => self.track_window.draw(&self.state, frame),
+        }
+    }
 
-    let mut current_state = load_state().expect("failed to load state");
-
-    match args.command {
-        Some(SubCommand::Add {
-            name,
-            target_minutes,
-        }) => add_activity(&mut current_state, name, target_minutes),
-        Some(SubCommand::List) => list_activities(&current_state),
-        Some(SubCommand::Delete { id }) => del_activity(&mut current_state, id),
-        Some(SubCommand::Start { id }) => start_activity(&mut current_state, id),
-        Some(SubCommand::End) => end_activity(&mut current_state),
-        Some(SubCommand::Register { id, minutes }) => {
-            register_time(&mut current_state, id, minutes)
-        }
-        Some(SubCommand::Overwrite { id, minutes }) => {
-            overwrite_time(&mut current_state, id, minutes)
-        }
-        None => list_recommended_action(&current_state),
-        Some(SubCommand::Pomo { minutes }) => {
-            pomodoro(&mut current_state, minutes);
-        }
-        Some(SubCommand::ChangeTarget { id, minutes }) => {
-            change_target_time(&mut current_state, id, minutes)
-        }
-        Some(SubCommand::Todo(TodoArgs { command })) => match command {
-            TodoSubCommand::List => list_todo(&current_state),
-            TodoSubCommand::Add { name } => add_todo(&mut current_state, name),
-            TodoSubCommand::Delete { id } => delete_todo(&mut current_state, id),
-            TodoSubCommand::Swap { id1, id2 } => swap_todos(&mut current_state, id1, id2),
-            TodoSubCommand::MoveAbove { anchor, to_move } => {
-                move_todo_above(&mut current_state, anchor, to_move)
+    fn handle_events(&mut self) -> std::io::Result<()> {
+        // NOTE: 10 seconds might be a long time!
+        if event::poll(Duration::from_secs(10))? {
+            // NOTE: this is NOT blocking!
+            let evt = event::read()?;
+            let result = match self.current_window {
+                AppWindow::Todo => self.todo_window.handle_event(&mut self.state, &evt),
+                AppWindow::Track => self.track_window.handle_event(&mut self.state, &evt),
+            };
+            match result {
+                WindowActionResult::Continue => (),
+                WindowActionResult::Exit => {
+                    self.exit = true;
+                }
+                WindowActionResult::SecondWindow => self.current_window = AppWindow::Todo,
+                WindowActionResult::FirstWindow => self.current_window = AppWindow::Track,
             }
-            TodoSubCommand::MoveBelow { anchor, to_move } => {
-                move_todo_below(&mut current_state, anchor, to_move)
-            }
-        },
-    };
+        }
+        Ok(())
+    }
 }
 
-fn load_state() -> Result<State, Box<dyn std::error::Error>> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowActionResult {
+    Continue,
+    Exit,
+    SecondWindow,
+    FirstWindow,
+}
+
+fn load_state() -> Result<State> {
     let home = std::env::var("HOME")?;
     let stored_state: StateBuilder = serde_json::from_str(&std::fs::read_to_string(format!(
         "{home}/.timetrack/state.json"
@@ -134,10 +128,23 @@ fn load_state() -> Result<State, Box<dyn std::error::Error>> {
     } else {
         Ok(state.refresh())
     }
-    // let mut new_state = State::new();
-    // new_state.add_activity("Test".into(), 60);
-    // new_state.add_activity("Other".into(), 135);
-    // Ok(new_state)
+}
+
+fn instruction_line(values: Vec<(&str, &str)>) -> Line<'static> {
+    Line::from(
+        values
+            .into_iter()
+            .map(|(action, keybind)| {
+                vec![
+                    format!(" {action} ").into(),
+                    format!("<{keybind}>").blue().bold(),
+                ]
+            })
+            .flatten()
+            .chain([" ".into()])
+            .collect::<Vec<_>>(),
+    )
+    .centered()
 }
 
 mod tests {
