@@ -11,10 +11,6 @@ by this program.
 
 # TODO
 
-## Refactoring: Constant Updates
-
-The state should be rarely saved to disk: only when the user quits the application, and when they start a pomodoro session.
-
 ## Bug Fix: Notifications Feature Flag
 
 Notifications should be hidden behind a feature flag so that people on other operating systems can still use the app.
