@@ -99,7 +99,9 @@ impl App {
             match result {
                 WindowActionResult::Continue => (),
                 WindowActionResult::Exit => {
-                    self.exit = true;
+                    if self.state.pomo_minutes().is_none() {
+                        self.exit = true;
+                    }
                 }
                 WindowActionResult::SecondWindow => self.current_window = AppWindow::Todo,
                 WindowActionResult::FirstWindow => self.current_window = AppWindow::Track,
