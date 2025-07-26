@@ -15,94 +15,6 @@ use crate::{
     state::{Activity, ActivityId, State},
 };
 
-// pub fn overwrite_time(current_state: &mut State, id: usize, minutes: usize) {
-//     if let Some(id) = current_state.get_by_raw_id(id) {
-//         current_state.overwrite_time(id, minutes).unwrap();
-//         println!("Set acheived minutes of {id} to {minutes}min!");
-//     } else {
-//         println!("There is no activity with that id!");
-//     }
-// }
-
-// pub fn register_time(current_state: &mut State, id: usize, minutes: usize) {
-//     if let Some(id) = current_state.get_by_raw_id(id) {
-//         current_state.add_time(id, minutes).unwrap();
-//         println!("Added {minutes}min to {id}!");
-//     } else {
-//         println!("There is no activity with that id!");
-//     }
-// }
-
-// pub fn end_activity(current_state: &mut State) {
-//     match current_state.end_activity(false) {
-//         Ok(()) => println!("Ended activity!"),
-//         Err(state::EndActivityError::NoCurrentActivity) => {
-//             println!("There is no ongoing activity!")
-//         }
-//         Err(state::EndActivityError::PomoOngoing) => {
-//             println!("You must cancel the ongoing pomo session first!");
-//         }
-//     }
-// }
-
-// pub fn start_activity(current_state: &mut State, id: usize) {
-//     if let Some(id) = current_state.get_by_raw_id(id) {
-//         match current_state.start_activity(id) {
-//             Ok(()) => println!("Started activity {id}!"),
-//             Err(StartActivityError::AlreadyOngoing) => {
-//                 println!("There is already an ongoing activity!")
-//             }
-//             Err(state::StartActivityError::InvalidId) => {
-//                 println!("There is no activity with that ID!")
-//             } // this should be unreachable but whatever
-//         }
-//     } else {
-//         println!("There is no activity with that ID!");
-//     }
-// }
-
-// pub fn del_activity(current_state: &mut State, id: usize) {
-//     if let Some(id) = current_state.get_by_raw_id(id) {
-//         match current_state.delete(id) {
-//             Ok(()) => println!("Deleted activity {id}!"),
-//             Err(state::DeletionError::PomoOngoing) => {
-//                 println!("You must end the currently ongoing pomo session first!")
-//             }
-//             Err(state::DeletionError::InvalidId) => unreachable!(),
-//         }
-//     } else {
-//         println!("There is no activity with id {id}!");
-//     }
-// }
-
-// pub fn list_activities(current_state: &State) {
-//     let current_activity = current_state.current_id();
-//     let current_duration = current_state.current_session_duration();
-//     let mut activities = current_state.activities();
-//     activities.sort_by_key(|x| {
-//         x.acheived_minutes()
-//             + current_activity
-//                 .is_some_and(|id| id == x.id())
-//                 .then(|| current_duration.unwrap().num_minutes().max(0) as usize)
-//                 .unwrap_or(0)
-//     });
-//     let activities = activities;
-//     let max_name_length = activities
-//         .iter()
-//         .map(|x| x.name().chars().count() + 1)
-//         .max()
-//         .unwrap_or(1);
-//     if activities.is_empty() {
-//         println!("No activities!");
-//     }
-//     for activity in activities {
-//         println!(
-//             "{}",
-//             current_state.format_activity(activity, Some(max_name_length))
-//         );
-//     }
-// }
-
 pub enum FindRecommendedActionError {
     NoMoreTasks,
     Ongoing,
@@ -141,37 +53,6 @@ pub fn find_recommended_action(
         Err(FindRecommendedActionError::NoMoreTasks)
     }
 }
-
-// pub fn list_recommended_action(current_state: &State) {
-//     match find_recommended_action(current_state) {
-//         Ok(activity) => println!("{}", current_state.format_activity(activity, None)),
-//         Err(FindRecommendedActionError::NoMoreTasks) => {
-//             println!("There are no more tasks! You're done!")
-//         }
-//         Err(FindRecommendedActionError::OngoingCompleted(activity)) => {
-//             let task_formatted = current_state.format_activity(activity, None);
-//             println!("You're currently doing:\n{task_formatted}\nStop the current task!");
-//         }
-//         Err(FindRecommendedActionError::Ongoing(activity)) => {
-//             let task_formatted = current_state.format_activity(activity, None);
-//             println!("Continue with your current task!\n{task_formatted}");
-//         }
-//     }
-// }
-
-// pub fn add_activity(current_state: &mut State, name: String, target_minutes: usize) {
-//     let new_activity_id = current_state.add_activity(name.clone(), target_minutes);
-//     println!("Added activity {new_activity_id}: {name} with target {target_minutes}min");
-// }
-
-// pub fn change_target_time(current_state: &mut State, id: usize, target_minutes: usize) {
-//     if let Some(activity) = current_state.get_by_raw_id_mut(id) {
-//         activity.set_target_minutes(target_minutes);
-//         println!("Overwritten target minutes!");
-//     } else {
-//         println!("That activity ID is invalid!");
-//     }
-// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrackWindowWidget {
