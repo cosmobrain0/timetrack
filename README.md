@@ -52,3 +52,7 @@ When something goes wrong (e.g. invalid user input), the user should be notified
 If you want to implement something in the TODO list above, then open a pull request!
 
 If you think something should be added to the TODO list, open an issue!
+
+# Known Bugs
+
+None so far.

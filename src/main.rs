@@ -99,6 +99,39 @@ impl App {
                 WindowActionResult::FirstWindow => self.current_window = AppWindow::Track,
             }
         }
+        if let Some(pomo_minutes) = self.state.pomo_minutes() {
+            if self
+                .state
+                .current_session_duration()
+                .expect("should have a current session")
+                .num_minutes()
+                >= pomo_minutes as i64
+            {
+                let activity_id = self
+                    .state
+                    .current_id()
+                    .expect("should be able to get current ID");
+                self.state
+                    .end_activity(true)
+                    .expect("should be able to end activity in pomo!");
+                let activity_name = self
+                    .state
+                    .activity_by_id(activity_id)
+                    .expect("should be able to get activity")
+                    .name();
+                mac_notification_sys::send_notification(
+                    "Pomodoro Session Over!!",
+                    Some(activity_name),
+                    &format!("You've worked for {pomo_minutes}min on {activity_name}!"),
+                    Some(
+                        mac_notification_sys::Notification::new()
+                            .asynchronous(true)
+                            .wait_for_click(true),
+                    ),
+                )
+                .expect("should be able to send notification!");
+            }
+        }
         Ok(())
     }
 }
