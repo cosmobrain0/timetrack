@@ -269,6 +269,10 @@ impl State {
     pub(crate) fn activities_count(&self) -> usize {
         self.activities.len()
     }
+
+    pub(crate) fn pomo_minutes(&self) -> Option<usize> {
+        self.current.as_ref().map(|x| x.pomo_minutes).flatten()
+    }
 }
 impl State {
     pub fn get_todos(&self) -> std::slice::Iter<'_, String> {

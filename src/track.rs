@@ -10,7 +10,8 @@ use ratatui::{
     crossterm::event::{Event, KeyCode, KeyEvent},
     layout::{Constraint, Layout},
     style::{Color, Style, Stylize},
-    widgets::{Block, List, Widget},
+    text::Line,
+    widgets::{Block, Borders, List, Paragraph, Widget, Wrap},
 };
 use tui_input::{Input, backend::crossterm::EventHandler};
 
@@ -341,6 +342,25 @@ impl TrackWindow {
             },
             activities_area,
         );
+        frame.render_widget(
+            &OngoingWidget {
+                ongoing: state.current_activity().map(Activity::clone),
+                pomodoro: state.pomo_minutes().map(|total_minutes| {
+                    let acheived_time = state
+                        .current_session_duration()
+                        .unwrap()
+                        .num_minutes()
+                        .max(0) as usize;
+                    PomodoroInfo {
+                        acheived_time,
+                        remaining_time: total_minutes.saturating_sub(acheived_time),
+                    }
+                }),
+                is_focused: self.focused_widget == TrackWindowWidget::Ongoing,
+                state,
+            },
+            ongoing_area,
+        );
     }
 
     pub fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
@@ -473,4 +493,56 @@ impl<'a> Widget for &ActivitiesWidget<'a> {
         })
         .render(area, buf);
     }
+}
+
+struct OngoingWidget<'a> {
+    ongoing: Option<Activity>,
+    pomodoro: Option<PomodoroInfo>,
+    is_focused: bool,
+    state: &'a State,
+}
+impl<'a> Widget for &OngoingWidget<'a> {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let block_style = if self.is_focused {
+            Color::Yellow.into()
+        } else {
+            Style::default()
+        };
+        if let Some(ongoing) = &self.ongoing {
+            if let Some(PomodoroInfo {
+                acheived_time,
+                remaining_time,
+            }) = self.pomodoro
+            {
+                Paragraph::new(vec![
+                    self.state.format_activity(ongoing, None),
+                    Line::from(format!(
+                        "Work for {r}min! Acheived {a} / {t} min",
+                        r = remaining_time.to_string(),
+                        a = acheived_time.to_string(),
+                        t = (acheived_time + remaining_time).to_string()
+                    )),
+                ])
+                .wrap(Wrap { trim: true })
+            } else {
+                Paragraph::new(self.state.format_activity(ongoing, None))
+            }
+        } else {
+            Paragraph::new("No ongoing session".dark_gray().italic())
+        }
+        .block(
+            Block::new()
+                .title(" Ongoing ")
+                .style(block_style)
+                .borders(Borders::all()),
+        )
+        .render(area, buf);
+    }
+}
+struct PomodoroInfo {
+    acheived_time: usize,
+    remaining_time: usize,
 }
