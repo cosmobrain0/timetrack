@@ -3,11 +3,11 @@ mod state;
 mod todo;
 mod track;
 
-use std::vec::IntoIter;
+use std::time::Duration;
 
 use chrono::Utc;
 use color_eyre::Result;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent};
+use ratatui::crossterm::event;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::{DefaultTerminal, Frame};
@@ -88,19 +88,22 @@ impl App {
     }
 
     fn handle_events(&mut self) -> std::io::Result<()> {
-        // NOTE: this is blocking!
-        let evt = event::read()?;
-        let result = match self.current_window {
-            AppWindow::Todo => self.todo_window.handle_event(&mut self.state, &evt),
-            AppWindow::Track => self.track_window.handle_event(&mut self.state, &evt),
-        };
-        match result {
-            WindowActionResult::Continue => (),
-            WindowActionResult::Exit => {
-                self.exit = true;
+        // NOTE: 10 seconds might be a long time!
+        if event::poll(Duration::from_secs(10))? {
+            // NOTE: this is NOT blocking!
+            let evt = event::read()?;
+            let result = match self.current_window {
+                AppWindow::Todo => self.todo_window.handle_event(&mut self.state, &evt),
+                AppWindow::Track => self.track_window.handle_event(&mut self.state, &evt),
+            };
+            match result {
+                WindowActionResult::Continue => (),
+                WindowActionResult::Exit => {
+                    self.exit = true;
+                }
+                WindowActionResult::SecondWindow => self.current_window = AppWindow::Todo,
+                WindowActionResult::FirstWindow => self.current_window = AppWindow::Track,
             }
-            WindowActionResult::SecondWindow => self.current_window = AppWindow::Todo,
-            WindowActionResult::FirstWindow => self.current_window = AppWindow::Track,
         }
         Ok(())
     }

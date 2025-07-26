@@ -1,17 +1,16 @@
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
 use ratatui::style::Stylize;
-use ratatui::text::Line;
 use ratatui::widgets::List;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
     style::{Color, Style},
-    widgets::{Block, Paragraph},
+    widgets::Block,
 };
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::input_widget::InputWidget;
-use crate::state::{State, TodoDeletionError, TodoSwapError};
+use crate::state::State;
 use crate::{WindowActionResult, instruction_line};
 
 pub(crate) struct TodoWindow {
@@ -86,7 +85,7 @@ impl TodoWindow {
                     state.push_todo(self.input.value().to_string());
                     self.input.reset();
                 } else if self.selected < state.todo_count() {
-                    state.delete_todo(self.selected);
+                    let _ = state.delete_todo(self.selected);
                     self.selected = self.selected.min(state.todo_count().saturating_sub(1));
                 }
             }
@@ -116,7 +115,7 @@ impl TodoWindow {
                 ..
             }) => {
                 if self.selected > 0 && self.selected < state.todo_count() {
-                    state.swap_todos(self.selected, self.selected - 1);
+                    let _ = state.swap_todos(self.selected, self.selected - 1);
                     self.selected -= 1;
                 }
             }
@@ -125,7 +124,7 @@ impl TodoWindow {
                 ..
             }) => {
                 if state.todo_count() > 1 && self.selected < state.todo_count() - 1 {
-                    state.swap_todos(self.selected, self.selected + 1);
+                    let _ = state.swap_todos(self.selected, self.selected + 1);
                     self.selected += 1;
                 }
             }

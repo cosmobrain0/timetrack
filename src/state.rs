@@ -78,12 +78,6 @@ impl State {
         self.activities.iter()
     }
 
-    pub fn get_by_raw_id(&self, id: usize) -> Option<ActivityId> {
-        self.activities
-            .iter()
-            .find_map(|activity| (activity.id == ActivityId(id)).then_some(ActivityId(id)))
-    }
-
     fn get_index_by_id(&self, id: ActivityId) -> Option<usize> {
         self.activities
             .iter()
@@ -283,14 +277,6 @@ impl State {
         self.todo.iter()
     }
 
-    pub fn format_todo(index: usize, todo: String) -> String {
-        format!("{id}: {todo}", id = Self::format_todo_id(index))
-    }
-
-    pub fn format_todo_id(id: usize) -> String {
-        format!("[TD{id}]")
-    }
-
     pub fn push_todo(&mut self, todo: String) {
         self.todo.push(todo);
     }
@@ -318,15 +304,6 @@ impl State {
 
     pub fn todo_count(&self) -> usize {
         self.todo.len()
-    }
-
-    pub fn insert_todo(&mut self, todo: String, position: usize) -> Result<(), ()> {
-        if position <= self.todo.len() {
-            self.todo.insert(position, todo);
-            Ok(())
-        } else {
-            Err(())
-        }
     }
 }
 impl Drop for State {

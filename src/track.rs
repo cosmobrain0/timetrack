@@ -1,16 +1,8 @@
-use std::{
-    io::Write,
-    sync::{Arc, atomic::AtomicBool},
-};
-
-use chrono::{Duration, Utc};
-use crossterm::{cursor, execute, style};
 use ratatui::{
     Frame,
-    crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers},
+    crossterm::event::{Event, KeyCode, KeyEvent},
     layout::{Constraint, Layout},
     style::{Color, Style, Stylize},
-    symbols::line::THICK_HORIZONTAL_DOWN,
     text::Line,
     widgets::{Block, Borders, List, Paragraph, Widget, Wrap},
 };
@@ -20,108 +12,8 @@ use crate::{
     WindowActionResult,
     input_widget::InputWidget,
     instruction_line,
-    state::{self, Activity, ActivityId, StartActivityError, State},
+    state::{Activity, ActivityId, State},
 };
-
-// pub fn pomodoro(current_state: &mut State, minutes: usize) {
-//     let (activity, session_minutes) = match find_recommended_action(current_state) {
-//         Ok(activity) => (
-//             activity,
-//             activity
-//                 .target_minutes()
-//                 .saturating_sub(activity.acheived_minutes())
-//                 .min(minutes),
-//         ),
-//         Err(FindRecommendedActionError::NoMoreTasks) => {
-//             println!("You have no more tasks! You're done!");
-//             return;
-//         }
-//         Err(FindRecommendedActionError::Ongoing(activity)) => {
-//             println!(
-//                 "Stop your current task before running pomo!\n{}",
-//                 current_state.format_activity(activity, None)
-//             );
-//             return;
-//         }
-//         Err(FindRecommendedActionError::OngoingCompleted(activity)) => {
-//             println!(
-//                 "Stop your current task!\n{}",
-//                 current_state.format_activity(activity, None)
-//             );
-//             return;
-//         }
-//     };
-
-//     let interrupted = Arc::new(AtomicBool::new(false));
-
-//     let interrupted_clone = Arc::clone(&interrupted);
-//     ctrlc::set_handler(move || {
-//         interrupted_clone.store(true, std::sync::atomic::Ordering::Relaxed);
-//     })
-//     .expect("should be able to set ctrlc handler!");
-
-//     println!("Work on this task for {session_minutes}min!");
-//     let activity_id = activity.id();
-//     let duration = Duration::seconds(session_minutes as i64 * 60);
-//     current_state
-//         .start_activity_pomo(activity_id, Some(session_minutes))
-//         .expect("should be able to start activity");
-//     let start = Utc::now();
-//     let end = start + duration;
-//     let activity = current_state
-//         .activity_by_id(activity_id)
-//         .expect("should be able to get ID of started activity");
-//     println!("{}", current_state.format_activity(activity, None));
-
-//     const TIMER_LENGTH: usize = 10;
-//     let mut stdout = std::io::stdout();
-//     while Utc::now() < end && !interrupted.load(std::sync::atomic::Ordering::Relaxed) {
-//         let length = (TIMER_LENGTH as f64 * (Utc::now() - start).num_seconds() as f64
-//             / duration.num_seconds() as f64)
-//             .floor() as usize;
-//         execute!(
-//             stdout,
-//             cursor::MoveToColumn(0),
-//             style::Print(format!(
-//                 "[{bars}>{padding}]",
-//                 bars = "=".repeat(length),
-//                 padding = " ".repeat(TIMER_LENGTH.saturating_sub(length))
-//             ))
-//         )
-//         .expect("should be able to draw progress bar");
-//         stdout.flush().unwrap();
-//         std::thread::sleep(std::time::Duration::from_millis(50));
-//     }
-//     println!("\n");
-
-//     if interrupted.load(std::sync::atomic::Ordering::Relaxed) {
-//         let time_left = ((end - Utc::now()).num_seconds() as f64 / 60.0).ceil() as usize;
-//         println!("You've ended the session {time_left}min early!");
-//     } else {
-//         println!("Stop working!");
-//     }
-//     current_state
-//         .end_activity(true)
-//         .expect("should be able to end activity in pomo!");
-
-//     let activity = current_state
-//         .activity_by_id(activity_id)
-//         .expect("should be able to get ID of finished activity");
-//     let activity_name = activity.name();
-//     println!("{}", current_state.format_activity(activity, None));
-
-//     mac_notification_sys::send_notification(
-//         "Pomodoro Session Over!!",
-//         Some(activity_name),
-//         &format!("You've worked for {session_minutes}min on {activity_name}!"),
-//         Some(
-//             mac_notification_sys::Notification::new()
-//                 .asynchronous(true)
-//                 .wait_for_click(true),
-//         ),
-//     )
-//     .expect("should be able to send notification!");
-// }
 
 // pub fn overwrite_time(current_state: &mut State, id: usize, minutes: usize) {
 //     if let Some(id) = current_state.get_by_raw_id(id) {
@@ -211,45 +103,44 @@ use crate::{
 //     }
 // }
 
-// pub enum FindRecommendedActionError<'a> {
-//     NoMoreTasks,
-//     Ongoing(&'a Activity),
-//     OngoingCompleted(&'a Activity),
-// }
+pub enum FindRecommendedActionError<'a> {
+    NoMoreTasks,
+    Ongoing(&'a Activity),
+    OngoingCompleted(&'a Activity),
+}
 
-// pub fn find_recommended_action(
-//     current_state: &State,
-// ) -> Result<&Activity, FindRecommendedActionError<'_>> {
-//     if let Some(current_task) = current_state.current_activity() {
-//         if current_task.acheived_minutes()
-//             + current_state
-//                 .current_session_duration()
-//                 .unwrap()
-//                 .num_minutes()
-//                 .max(0) as usize
-//             >= current_task.target_minutes()
-//         {
-//             Err(FindRecommendedActionError::OngoingCompleted(current_task))
-//         } else {
-//             Err(FindRecommendedActionError::Ongoing(current_task))
-//         }
-//     } else if let Some(activity) = current_state
-//         .activities()
-//         .iter()
-//         .filter(|x| x.target_minutes() > x.acheived_minutes())
-//         .reduce(|a, b| {
-//             if a.acheived_minutes() < b.acheived_minutes() {
-//                 a
-//             } else {
-//                 b
-//             }
-//         })
-//     {
-//         Ok(activity)
-//     } else {
-//         Err(FindRecommendedActionError::NoMoreTasks)
-//     }
-// }
+pub fn find_recommended_action(
+    current_state: &State,
+) -> Result<&Activity, FindRecommendedActionError<'_>> {
+    if let Some(current_task) = current_state.current_activity() {
+        if current_task.acheived_minutes()
+            + current_state
+                .current_session_duration()
+                .unwrap()
+                .num_minutes()
+                .max(0) as usize
+            >= current_task.target_minutes()
+        {
+            Err(FindRecommendedActionError::OngoingCompleted(current_task))
+        } else {
+            Err(FindRecommendedActionError::Ongoing(current_task))
+        }
+    } else if let Some(activity) = current_state
+        .activities()
+        .filter(|x| x.target_minutes() > x.acheived_minutes())
+        .reduce(|a, b| {
+            if a.acheived_minutes() < b.acheived_minutes() {
+                a
+            } else {
+                b
+            }
+        })
+    {
+        Ok(activity)
+    } else {
+        Err(FindRecommendedActionError::NoMoreTasks)
+    }
+}
 
 // pub fn list_recommended_action(current_state: &State) {
 //     match find_recommended_action(current_state) {
@@ -293,9 +184,10 @@ enum TrackWindowWidget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TimerInputPurpose {
     NewActivity,
-    OverwriteActivity(ActivityId),
-    RegisterActivity(ActivityId),
-    ChangeTarget(ActivityId),
+    OverwriteActivity,
+    RegisterActivity,
+    ChangeTarget,
+    StartPomodoro,
 }
 
 pub struct TrackWindow {
@@ -420,22 +312,34 @@ impl TrackWindow {
                         self.focused_widget = TextInput;
                     }
                 }
-                TimerInputPurpose::OverwriteActivity(activity_id) => {
-                    let _ = state.overwrite_time(activity_id, self.timer_input);
-                    self.focused_widget = Activities;
-                    self.timer_input_purpose = TimerInputPurpose::NewActivity;
+                TimerInputPurpose::OverwriteActivity => {
+                    if let Some(activity_id) = self.selected_activity_id(state) {
+                        let _ = state.overwrite_time(activity_id, self.timer_input);
+                        self.focused_widget = Activities;
+                        self.timer_input_purpose = TimerInputPurpose::NewActivity;
+                    }
                 }
-                TimerInputPurpose::RegisterActivity(activity_id) => {
-                    let _ = state.add_time(activity_id, self.timer_input);
-                    self.focused_widget = Activities;
-                    self.timer_input_purpose = TimerInputPurpose::NewActivity;
+                TimerInputPurpose::RegisterActivity => {
+                    if let Some(activity_id) = self.selected_activity_id(state) {
+                        let _ = state.add_time(activity_id, self.timer_input);
+                        self.focused_widget = Activities;
+                        self.timer_input_purpose = TimerInputPurpose::NewActivity;
+                    }
                 }
-                TimerInputPurpose::ChangeTarget(activity_id) => {
-                    if let Some(activity) = state.get_by_id_mut(activity_id) {
-                        activity.set_target_minutes(self.timer_input);
+                TimerInputPurpose::ChangeTarget => {
+                    if let Some(activity_id) = self.selected_activity_id(state) {
+                        if let Some(activity) = state.get_by_id_mut(activity_id) {
+                            activity.set_target_minutes(self.timer_input);
+                        }
                     }
                     self.focused_widget = Activities;
                     self.timer_input_purpose = TimerInputPurpose::NewActivity;
+                }
+                TimerInputPurpose::StartPomodoro => {
+                    if let Ok(activity) = find_recommended_action(state) {
+                        let id = activity.id();
+                        let _ = state.start_activity_pomo(id, Some(self.timer_input));
+                    }
                 }
             },
             Event::Key(KeyEvent {
@@ -501,6 +405,14 @@ impl TrackWindow {
                 self.timer_input = 0;
             }
             Event::Key(KeyEvent {
+                code: KeyCode::Backspace,
+                ..
+            }) if self.focused_widget == Ongoing => {
+                if state.pomo_minutes().is_some() {
+                    let _ = state.end_activity(true);
+                }
+            }
+            Event::Key(KeyEvent {
                 code: KeyCode::Char('1'),
                 ..
             }) if self.focused_widget != TextInput => {
@@ -516,8 +428,8 @@ impl TrackWindow {
                 code: KeyCode::Char('r'),
                 ..
             }) if self.focused_widget == Activities => {
-                if let Some(activity_id) = self.selected_activity_id(state) {
-                    self.timer_input_purpose = TimerInputPurpose::RegisterActivity(activity_id);
+                if let Some(_) = self.selected_activity_id(state) {
+                    self.timer_input_purpose = TimerInputPurpose::RegisterActivity;
                     self.focused_widget = TimerInput;
                 }
             }
@@ -525,8 +437,32 @@ impl TrackWindow {
                 code: KeyCode::Char('o'),
                 ..
             }) if self.focused_widget == Activities => {
-                if let Some(activity_id) = self.selected_activity_id(state) {
-                    self.timer_input_purpose = TimerInputPurpose::OverwriteActivity(activity_id);
+                if let Some(_) = self.selected_activity_id(state) {
+                    self.timer_input_purpose = TimerInputPurpose::OverwriteActivity;
+                    self.focused_widget = TimerInput;
+                }
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('p'),
+                ..
+            }) if self.focused_widget == Activities || self.focused_widget == Ongoing => {
+                if let Ok(ideal_session_minutes) = find_recommended_action(state).map(|activity| {
+                    activity
+                        .target_minutes()
+                        .saturating_sub(activity.acheived_minutes())
+                        .min(30)
+                }) {
+                    self.focused_widget = TimerInput;
+                    self.timer_input = ideal_session_minutes;
+                    self.timer_input_purpose = TimerInputPurpose::StartPomodoro;
+                }
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('c'),
+                ..
+            }) if self.focused_widget == Activities => {
+                if let Some(_) = self.selected_activity_id(state) {
+                    self.timer_input_purpose = TimerInputPurpose::ChangeTarget;
                     self.focused_widget = TimerInput;
                 }
             }
@@ -536,6 +472,38 @@ impl TrackWindow {
                 }
             }
         }
+
+        if let Some(pomo_minutes) = state.pomo_minutes() {
+            if state
+                .current_session_duration()
+                .expect("should have a current session")
+                .num_minutes()
+                >= pomo_minutes as i64
+            {
+                let activity_id = state
+                    .current_id()
+                    .expect("should be able to get current ID");
+                state
+                    .end_activity(true)
+                    .expect("should be able to end activity in pomo!");
+                let activity_name = state
+                    .activity_by_id(activity_id)
+                    .expect("should be able to get activity")
+                    .name();
+                mac_notification_sys::send_notification(
+                    "Pomodoro Session Over!!",
+                    Some(activity_name),
+                    &format!("You've worked for {pomo_minutes}min on {activity_name}!"),
+                    Some(
+                        mac_notification_sys::Notification::new()
+                            .asynchronous(true)
+                            .wait_for_click(true),
+                    ),
+                )
+                .expect("should be able to send notification!");
+            }
+        }
+
         WindowActionResult::Continue
     }
 
@@ -571,6 +539,8 @@ impl<'a> Widget for &ActivitiesWidget<'a> {
             ("Delete", "Backspace"),
             ("Register Time", "R"),
             ("Overwrite Time", "O"),
+            ("Start Pomodoro", "P"),
+            ("Change Target", "C"),
         ]);
         let max_name_length: usize = self
             .state
@@ -650,7 +620,16 @@ impl<'a> Widget for &OngoingWidget<'a> {
             Block::new()
                 .title(" Ongoing ")
                 .style(block_style)
-                .borders(Borders::all()),
+                .borders(Borders::all())
+                .title_bottom(if self.is_focused {
+                    if self.ongoing.is_some() {
+                        instruction_line(vec![("End Pomodoro Session", "Backspace")])
+                    } else {
+                        instruction_line(vec![("Start Pomodoro Session", "P")])
+                    }
+                } else {
+                    Line::from(vec![])
+                }),
         )
         .render(area, buf);
     }
@@ -682,20 +661,26 @@ impl<'a> Widget for &TimerInputWidget<'a> {
                 Block::bordered()
                     .title(match self.purpose {
                         TimerInputPurpose::NewActivity => " New Activity Target ".to_string(),
-                        TimerInputPurpose::OverwriteActivity(x) => {
+                        TimerInputPurpose::OverwriteActivity => {
                             format!(
                                 " Overwrite Time for {}",
                                 self.selected_activity_name.unwrap_or_default()
                             )
                         }
-                        TimerInputPurpose::RegisterActivity(x) => format!(
+                        TimerInputPurpose::RegisterActivity => format!(
                             " Register Time for {}",
                             self.selected_activity_name.unwrap_or_default()
                         ),
-                        TimerInputPurpose::ChangeTarget(x) => format!(
+                        TimerInputPurpose::ChangeTarget => format!(
                             " Change Target for {} ",
                             self.selected_activity_name.unwrap_or_default()
                         ),
+                        TimerInputPurpose::StartPomodoro => {
+                            format!(
+                                " Pomodoro Session Length for {}",
+                                self.selected_activity_name.unwrap_or_default()
+                            )
+                        }
                     })
                     .title_bottom(if self.is_focused {
                         instruction_line(vec![
