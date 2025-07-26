@@ -135,6 +135,23 @@ impl TodoWindow {
                     self.selected += 1;
                 }
             }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('1'),
+                ..
+            }) => {
+                if !self.input_focused {
+                    return WindowActionResult::FirstWindow;
+                }
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('2'),
+                ..
+            }) => {
+                if !self.input_focused {
+                    return WindowActionResult::SecondWindow;
+                }
+            }
+
             _ => {
                 if self.input_focused {
                     self.input.handle_event(event);

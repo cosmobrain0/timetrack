@@ -99,6 +99,8 @@ impl App {
             WindowActionResult::Exit => {
                 self.exit = true;
             }
+            WindowActionResult::SecondWindow => self.current_window = AppWindow::Todo,
+            WindowActionResult::FirstWindow => self.current_window = AppWindow::Track,
         }
         Ok(())
     }
@@ -108,6 +110,8 @@ impl App {
 enum WindowActionResult {
     Continue,
     Exit,
+    SecondWindow,
+    FirstWindow,
 }
 
 fn load_state() -> Result<State> {

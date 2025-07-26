@@ -7,7 +7,7 @@ use chrono::{Duration, Utc};
 use crossterm::{cursor, execute, style};
 use ratatui::{
     Frame,
-    crossterm::event::{Event, KeyCode, KeyEvent},
+    crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Layout},
     style::{Color, Style, Stylize},
     symbols::line::THICK_HORIZONTAL_DOWN,
@@ -465,6 +465,24 @@ impl TrackWindow {
                     }
                 }
             }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('1'),
+                ..
+            }) => match self.focused_widget {
+                TrackWindowWidget::Ongoing
+                | TrackWindowWidget::Activities
+                | TrackWindowWidget::TimerInput => return WindowActionResult::FirstWindow,
+                TrackWindowWidget::TextInput => (),
+            },
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('2'),
+                ..
+            }) => match self.focused_widget {
+                TrackWindowWidget::Ongoing
+                | TrackWindowWidget::Activities
+                | TrackWindowWidget::TimerInput => return WindowActionResult::SecondWindow,
+                TrackWindowWidget::TextInput => (),
+            },
             _ => {
                 if self.focused_widget == TrackWindowWidget::TextInput {
                     self.text_input.handle_event(event);
