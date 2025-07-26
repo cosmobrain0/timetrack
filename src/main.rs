@@ -112,16 +112,25 @@ enum WindowActionResult {
 }
 
 fn load_state() -> Result<State> {
-    let home = std::env::var("HOME")?;
-    let stored_state: StateBuilder = serde_json::from_str(&std::fs::read_to_string(format!(
-        "{home}/.timetrack/state.json"
-    ))?)?;
+    let stored_state: StateBuilder =
+        serde_json::from_str(&std::fs::read_to_string(stored_state_file_path()?)?)?;
     let state: State = stored_state.into();
     if state.date() == Utc::now().date_naive() {
         Ok(state)
     } else {
         Ok(state.refresh())
     }
+}
+
+fn stored_state_file_path() -> Result<String, color_eyre::eyre::Error> {
+    Ok(
+        if let Ok(file_path) = std::env::var("TIMETRACK_STATE_FILE_PATH") {
+            file_path
+        } else {
+            let home = std::env::var("HOME")?;
+            format!("{home}/.timetrack/state.json")
+        },
+    )
 }
 
 fn instruction_line(values: Vec<(&str, &str)>) -> Line<'static> {

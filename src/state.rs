@@ -4,6 +4,8 @@ use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
 use ratatui::{style::Stylize, text::Line};
 use serde::{Deserialize, Serialize};
 
+use crate::stored_state_file_path;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateBuilder {
     pub date: Option<NaiveDate>,
@@ -246,9 +248,8 @@ impl State {
     }
 
     fn save_state(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let home = std::env::var("HOME")?;
         std::fs::write(
-            format!("{home}/.timetrack/state.json"),
+            stored_state_file_path()?,
             serde_json::to_string(self).expect("should be able to convert to string"),
         )?;
         Ok(())
