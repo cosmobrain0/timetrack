@@ -55,4 +55,6 @@ If you think something should be added to the TODO list, open an issue!
 
 # Known Bugs
 
-None so far.
+## Pomodoro Session For...
+
+When choosing the duration of a pomodoro session, the timer input says that you're selecting the time for whichever task is currently hovered over on the Activities tab, not the session that will actually be done next.
