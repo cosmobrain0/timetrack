@@ -65,14 +65,12 @@ impl State {
         };
         let id = activity.id;
         self.activities.push(activity);
-        self.save_state().unwrap();
         id
     }
 
     fn new_activity_id(&mut self) -> ActivityId {
         let id = ActivityId(self.next_activity_id + 1);
         self.next_activity_id += 1;
-        self.save_state().unwrap();
         id
     }
 
@@ -98,7 +96,6 @@ impl State {
                 }
             }
             self.activities.remove(index);
-            self.save_state().unwrap();
             Ok(())
         } else {
             Err(DeletionError::InvalidId)
@@ -122,7 +119,6 @@ impl State {
             Err(StartActivityError::AlreadyOngoing)
         } else if self.get_index_by_id(id).is_some() {
             self.current = Some(CurrentActionInfo::new(id, Utc::now(), pomo_minutes));
-            self.save_state().unwrap();
             Ok(())
         } else {
             Err(StartActivityError::InvalidId)
@@ -141,7 +137,6 @@ impl State {
                 self.activities[index].acheived_minutes += delta.num_minutes().max(0) as usize;
             }
             self.current = None;
-            self.save_state().unwrap();
             Ok(())
         } else {
             Err(EndActivityError::NoCurrentActivity)
@@ -151,7 +146,6 @@ impl State {
     pub fn add_time(&mut self, id: ActivityId, minutes: usize) -> Result<(), ()> {
         if let Some(index) = self.get_index_by_id(id) {
             self.activities[index].acheived_minutes += minutes;
-            self.save_state().unwrap();
             Ok(())
         } else {
             Err(())
@@ -161,7 +155,6 @@ impl State {
     pub fn overwrite_time(&mut self, id: ActivityId, minutes: usize) -> Result<(), ()> {
         if let Some(index) = self.get_index_by_id(id) {
             self.activities[index].acheived_minutes = minutes;
-            self.save_state().unwrap();
             Ok(())
         } else {
             Err(())
