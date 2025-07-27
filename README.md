@@ -8,19 +8,20 @@ To enable notifications when pomodoro sessions are completed, use the following 
 - Linux: not implemented yet  
 - Windows: not implemented yet  
 
-This application stores state in a json file (defaults to `$HOME/.timetrack/state.json`). Before running this program for the first time, make sure the file exists and contains `{}` (and nothing else). You can change
-the file path by setting the `TIMETRACK_STATE_FILE_PATH` to the **full** to the file (ending with the file name). This file should also either have `{}` in it or nothing else, or it should have save data which was generated
-by this program.
+This application stores state in a json file (defaults to `$HOME/.timetrack/state.json`). You can change the file path by setting the `TIMETRACK_STATE_FILE_PATH` to the path to the file (ending with the file name).
+If the file does not exist, or directories in the file path do not exist, this program will create them when the program starts.
 
 # TODO
-
-## Feature: Good Start
-
-When run for the first time, the program should set up the required configuration files 
 
 ## Feature: Help Page / Manual
 
 A paragraph explaining how to use this app
+
+## Refactoring: Window Trait
+
+All windows should implement a `trait Window`, and `App::current_window` should be a `Box<dyn Window>`.
+Then, instead of having a different field on `App` for every window, we can have a `[Box<dyn Window>; 3]` or maybe a `Vec<Box<dyn Window>>`.
+This allows a lot of repetitive `match` statements to be reduced to just `self.current_window`.
 
 ## Feature: Todo List Buckets
 

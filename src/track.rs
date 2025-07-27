@@ -306,6 +306,12 @@ impl TrackWindow {
                 return WindowActionResult::SecondWindow;
             }
             Event::Key(KeyEvent {
+                code: KeyCode::Char('3'),
+                ..
+            }) if self.focused_widget != TextInput => {
+                return WindowActionResult::ThirdWindow;
+            }
+            Event::Key(KeyEvent {
                 code: KeyCode::Char('r'),
                 ..
             }) if self.focused_widget == Activities => {
