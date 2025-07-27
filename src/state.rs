@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashSet, fmt::Display};
 
 use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
 use ratatui::{style::Stylize, text::Line};
@@ -24,9 +24,25 @@ pub struct State {
     next_activity_id: usize,
     current: Option<CurrentActionInfo>,
     todo: Vec<TodoItem>,
+    /// Used to cache the results of buckets calculations
+    /// Initially `None`, changed to `Some` when it needs to be calculated
+    /// Once it becomes `Some`, it will be updated every time
+    /// the todo list becomes out of date
+    buckets: HashSet<String>,
 }
 impl From<StateBuilder> for State {
     fn from(value: StateBuilder) -> Self {
+        let todo: Vec<_> = value
+            .todo
+            .unwrap_or_default()
+            .into_iter()
+            .map(|x| TodoItem::new(x, None))
+            .chain(value.todo_v2.unwrap_or_default().into_iter())
+            .collect();
+        let buckets = todo
+            .iter()
+            .filter_map(|x| x.bucket().map(ToString::to_string))
+            .collect::<HashSet<_>>();
         Self {
             next_activity_id: value.next_activity_id.unwrap_or_else(|| {
                 value
@@ -38,13 +54,8 @@ impl From<StateBuilder> for State {
             activities: value.activities.unwrap_or_default(),
             date: value.date.unwrap_or_else(|| Utc::now().date_naive()),
             current: value.current,
-            todo: value
-                .todo
-                .unwrap_or_default()
-                .into_iter()
-                .map(|x| TodoItem::new(x, None))
-                .chain(value.todo_v2.unwrap_or_default().into_iter())
-                .collect(),
+            buckets,
+            todo,
         }
     }
 }
@@ -60,6 +71,7 @@ impl State {
                 .collect(),
             next_activity_id: self.next_activity_id,
             current: self.current,
+            buckets: self.buckets.clone(),
             todo: self.todo.clone(),
         }
     }
@@ -288,12 +300,25 @@ impl State {
     }
 
     pub fn push_todo(&mut self, todo: TodoItem) {
+        if let Some(bucket) = todo.bucket() {
+            self.buckets.insert(bucket.to_string());
+        }
         self.todo.push(todo);
     }
 
     pub fn delete_todo(&mut self, id: usize) -> Result<TodoItem, TodoDeletionError> {
         if id < self.todo.len() {
-            Ok(self.todo.remove(id))
+            let item = self.todo.remove(id);
+            if let Some(removed_item_bucket) = item.bucket() {
+                if !self
+                    .todo
+                    .iter()
+                    .any(|x| x.bucket().is_some_and(|x| x == removed_item_bucket))
+                {
+                    self.buckets.remove(removed_item_bucket);
+                }
+            }
+            Ok(item)
         } else {
             Err(TodoDeletionError::InvalidId)
         }
