@@ -61,8 +61,8 @@ impl Window for TodoWindow {
                 .get_todos()
                 .map(|x| {
                     format!(
-                        "{bucket} {item}",
-                        bucket = x.bucket().unwrap_or_default(),
+                        "<{bucket}> {item}",
+                        bucket = x.bucket().unwrap_or("N/A"),
                         item = x.item()
                     )
                 })

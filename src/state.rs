@@ -12,6 +12,7 @@ pub struct StateBuilder {
     pub activities: Option<Vec<Activity>>,
     pub next_activity_id: Option<usize>,
     pub current: Option<CurrentActionInfo>,
+    /// NOTE: this was used in an older version, before buckets
     pub todo: Option<Vec<String>>,
     pub todo_v2: Option<Vec<TodoItem>>,
 }
@@ -250,7 +251,15 @@ impl State {
     fn save_state(&self) -> Result<(), Box<dyn std::error::Error>> {
         std::fs::write(
             stored_state_file_path()?,
-            serde_json::to_string(self).expect("should be able to convert to string"),
+            serde_json::to_string(&StateBuilder {
+                date: Some(self.date),
+                activities: Some(self.activities.clone()),
+                next_activity_id: Some(self.next_activity_id),
+                current: self.current,
+                todo: None,
+                todo_v2: Some(self.todo.clone()),
+            })
+            .expect("should be able to convert to string"),
         )?;
         Ok(())
     }
