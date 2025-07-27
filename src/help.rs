@@ -5,8 +5,9 @@ use ratatui::{
     widgets::{Block, Paragraph, Wrap},
 };
 
-use crate::WindowActionResult;
+use crate::{Window, WindowActionResult};
 
+#[derive(Debug)]
 pub struct HelpWindow {
     data: Vec<Vec<Span<'static>>>,
 }
@@ -66,8 +67,9 @@ impl HelpWindow {
         ];
         Self { data }
     }
-
-    pub(crate) fn draw(
+}
+impl Window for HelpWindow {
+    fn draw(
         &self,
         _state: &crate::state::State,
         frame: &mut ratatui::Frame<'_>,
@@ -87,8 +89,8 @@ impl HelpWindow {
         );
     }
 
-    pub(crate) fn handle_event(
-        &self,
+    fn handle_event(
+        &mut self,
         _state: &mut crate::state::State,
         event: &ratatui::crossterm::event::Event,
     ) -> WindowActionResult {

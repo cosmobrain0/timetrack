@@ -4,6 +4,7 @@ mod state;
 mod todo;
 mod track;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -29,7 +30,12 @@ fn main() -> Result<()> {
     result
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+trait Window: std::fmt::Debug {
+    fn draw(&self, state: &State, frame: &mut Frame, area: ratatui::layout::Rect);
+    fn handle_event(&mut self, state: &mut State, event: &event::Event) -> WindowActionResult;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum AppWindow {
     Track,
     Todo,
@@ -39,21 +45,30 @@ enum AppWindow {
 struct App {
     state: State,
     exit: bool,
-    todo_window: TodoWindow,
-    track_window: TrackWindow,
-    help_window: HelpWindow,
+    windows: HashMap<AppWindow, Box<dyn Window>>,
     current_window: AppWindow,
 }
 impl App {
     fn new() -> Result<Self> {
         let state = load_state()?;
+        let mut windows = HashMap::new();
+        windows.insert(
+            AppWindow::Track,
+            Box::new(TrackWindow::new()) as Box<dyn Window>,
+        );
+        windows.insert(
+            AppWindow::Todo,
+            Box::new(TodoWindow::new()) as Box<dyn Window>,
+        );
+        windows.insert(
+            AppWindow::Help,
+            Box::new(HelpWindow::new()) as Box<dyn Window>,
+        );
         Ok(Self {
             state,
             exit: false,
-            todo_window: TodoWindow::new(),
-            track_window: TrackWindow::new(),
             current_window: AppWindow::Track,
-            help_window: HelpWindow::new(),
+            windows,
         })
     }
 
@@ -81,11 +96,7 @@ impl App {
             header_area,
         );
 
-        match self.current_window {
-            AppWindow::Todo => self.todo_window.draw(&self.state, frame, main_area),
-            AppWindow::Track => self.track_window.draw(&self.state, frame, main_area),
-            AppWindow::Help => self.help_window.draw(&self.state, frame, main_area),
-        }
+        self.windows[&self.current_window].draw(&self.state, frame, main_area);
     }
 
     fn handle_events(&mut self) -> std::io::Result<()> {
@@ -93,11 +104,11 @@ impl App {
         if event::poll(Duration::from_secs(10))? {
             // NOTE: this is NOT blocking!
             let evt = event::read()?;
-            let result = match self.current_window {
-                AppWindow::Todo => self.todo_window.handle_event(&mut self.state, &evt),
-                AppWindow::Track => self.track_window.handle_event(&mut self.state, &evt),
-                AppWindow::Help => self.help_window.handle_event(&mut self.state, &evt),
-            };
+            let result = self
+                .windows
+                .get_mut(&self.current_window)
+                .unwrap()
+                .handle_event(&mut self.state, &evt);
             match result {
                 WindowActionResult::Continue => (),
                 WindowActionResult::Exit => {

@@ -12,8 +12,9 @@ use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::input_widget::InputWidget;
 use crate::state::State;
-use crate::{WindowActionResult, instruction_line};
+use crate::{Window, WindowActionResult, instruction_line};
 
+#[derive(Debug)]
 pub(crate) struct TodoWindow {
     input_focused: bool,
     selected: usize,
@@ -27,8 +28,9 @@ impl TodoWindow {
             input: Input::new(String::new()),
         }
     }
-
-    pub fn draw(&self, state: &State, frame: &mut Frame, area: Rect) {
+}
+impl Window for TodoWindow {
+    fn draw(&self, state: &State, frame: &mut Frame, area: Rect) {
         let [list_area, input_area] =
             Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(area);
 
@@ -71,7 +73,7 @@ impl TodoWindow {
         frame.render_widget(list, list_area);
     }
 
-    pub fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
+    fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
         match event {
             Event::Key(KeyEvent {
                 code: KeyCode::Tab, ..

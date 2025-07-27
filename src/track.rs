@@ -9,7 +9,7 @@ use ratatui::{
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::{
-    WindowActionResult,
+    Window, WindowActionResult,
     input_widget::InputWidget,
     instruction_line,
     state::{Activity, ActivityId, State},
@@ -71,6 +71,7 @@ enum TimerInputPurpose {
     StartPomodoro,
 }
 
+#[derive(Debug)]
 pub struct TrackWindow {
     focused_widget: TrackWindowWidget,
     text_input: Input,
@@ -88,8 +89,9 @@ impl TrackWindow {
             selected_activity: 0,
         }
     }
-
-    pub fn draw(&self, state: &State, frame: &mut Frame, area: Rect) {
+}
+impl Window for TrackWindow {
+    fn draw(&self, state: &State, frame: &mut Frame, area: Rect) {
         let [
             activities_area,
             text_input_area,
@@ -158,7 +160,7 @@ impl TrackWindow {
         );
     }
 
-    pub fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
+    fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
         use TrackWindowWidget::*;
         match event {
             Event::Key(KeyEvent {
@@ -362,7 +364,8 @@ impl TrackWindow {
 
         WindowActionResult::Continue
     }
-
+}
+impl TrackWindow {
     fn selected_activity_id(&self, state: &State) -> Option<ActivityId> {
         state
             .activities()
