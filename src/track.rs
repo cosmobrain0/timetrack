@@ -525,12 +525,7 @@ impl<'a> Widget for &TimerInputWidget<'a> {
                             " Change Target for {} ",
                             self.selected_activity_name.unwrap_or_default()
                         ),
-                        TimerInputPurpose::StartPomodoro => {
-                            format!(
-                                " Pomodoro Session Length for {}",
-                                self.selected_activity_name.unwrap_or_default()
-                            )
-                        }
+                        TimerInputPurpose::StartPomodoro => " Pomodoro Session Length ".to_string(),
                     })
                     .title_bottom(if self.is_focused {
                         instruction_line(vec![
