@@ -3,6 +3,8 @@ mod state;
 mod todo;
 mod track;
 
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 
 use chrono::Utc;
@@ -147,8 +149,16 @@ enum WindowActionResult {
 }
 
 fn load_state() -> Result<State> {
-    let stored_state: StateBuilder =
-        serde_json::from_str(&std::fs::read_to_string(stored_state_file_path()?)?)?;
+    let path = stored_state_file_path()?;
+    let stored_state: StateBuilder = if path.exists() {
+        serde_json::from_str(&std::fs::read_to_string(path)?)?
+    } else {
+        if let Some(dirs) = path.parent() {
+            std::fs::create_dir_all(dirs)?;
+        }
+        std::fs::write(path, "{}")?;
+        serde_json::from_str("{}")?
+    };
     let state: State = stored_state.into();
     if state.date() == Utc::now().date_naive() {
         Ok(state)
@@ -157,15 +167,17 @@ fn load_state() -> Result<State> {
     }
 }
 
-fn stored_state_file_path() -> Result<String, color_eyre::eyre::Error> {
-    Ok(
+fn stored_state_file_path() -> Result<PathBuf, color_eyre::eyre::Error> {
+    Ok(PathBuf::from_str(
         if let Ok(file_path) = std::env::var("TIMETRACK_STATE_FILE_PATH") {
             file_path
         } else {
             let home = std::env::var("HOME")?;
             format!("{home}/.timetrack/state.json")
-        },
+        }
+        .as_str(),
     )
+    .unwrap())
 }
 
 fn instruction_line(values: Vec<(&str, &str)>) -> Line<'static> {
