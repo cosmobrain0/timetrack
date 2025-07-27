@@ -13,6 +13,7 @@ pub struct StateBuilder {
     pub next_activity_id: Option<usize>,
     pub current: Option<CurrentActionInfo>,
     pub todo: Option<Vec<String>>,
+    pub todo_v2: Option<Vec<TodoItem>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,7 +22,7 @@ pub struct State {
     activities: Vec<Activity>,
     next_activity_id: usize,
     current: Option<CurrentActionInfo>,
-    todo: Vec<String>,
+    todo: Vec<TodoItem>,
 }
 impl From<StateBuilder> for State {
     fn from(value: StateBuilder) -> Self {
@@ -36,7 +37,13 @@ impl From<StateBuilder> for State {
             activities: value.activities.unwrap_or_default(),
             date: value.date.unwrap_or_else(|| Utc::now().date_naive()),
             current: value.current,
-            todo: value.todo.unwrap_or_default(),
+            todo: value
+                .todo
+                .unwrap_or_default()
+                .into_iter()
+                .map(|x| TodoItem::new(x, None))
+                .chain(value.todo_v2.unwrap_or_default().into_iter())
+                .collect(),
         }
     }
 }
@@ -267,15 +274,15 @@ impl State {
     }
 }
 impl State {
-    pub fn get_todos(&self) -> std::slice::Iter<'_, String> {
+    pub fn get_todos(&self) -> std::slice::Iter<'_, TodoItem> {
         self.todo.iter()
     }
 
-    pub fn push_todo(&mut self, todo: String) {
+    pub fn push_todo(&mut self, todo: TodoItem) {
         self.todo.push(todo);
     }
 
-    pub fn delete_todo(&mut self, id: usize) -> Result<String, TodoDeletionError> {
+    pub fn delete_todo(&mut self, id: usize) -> Result<TodoItem, TodoDeletionError> {
         if id < self.todo.len() {
             Ok(self.todo.remove(id))
         } else {
@@ -398,5 +405,36 @@ pub struct ActivityId(usize);
 impl Display for ActivityId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{id}]", id = self.0)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TodoItem {
+    item: String,
+    bucket: Option<String>,
+}
+impl TodoItem {
+    pub fn new(item: String, bucket: Option<String>) -> Self {
+        Self { item, bucket }
+    }
+
+    pub fn item(&self) -> &str {
+        &self.item
+    }
+
+    pub fn bucket(&self) -> Option<&str> {
+        self.bucket.as_ref().map(String::as_str)
+    }
+
+    pub fn item_mut(&mut self) -> &mut String {
+        &mut self.item
+    }
+
+    pub fn bucket_mut(&mut self) -> Option<&mut String> {
+        self.bucket.as_mut()
+    }
+
+    pub fn set_bucket(&mut self, bucket: Option<String>) {
+        self.bucket = bucket;
     }
 }

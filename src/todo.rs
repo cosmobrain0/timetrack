@@ -11,7 +11,7 @@ use ratatui::{
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::input_widget::InputWidget;
-use crate::state::State;
+use crate::state::{State, TodoItem};
 use crate::{Window, WindowActionResult, instruction_line};
 
 #[derive(Debug)]
@@ -55,13 +55,26 @@ impl Window for TodoWindow {
             ("Move Up", "Left"),
             ("Move Down", "Right"),
         ]);
-        let list = List::new(state.get_todos().enumerate().map(|(i, x)| {
-            if !self.input_focused && i == self.selected {
-                x.to_string().blue().bold()
-            } else {
-                x.into()
-            }
-        }))
+        // TODO: update this with better formatting!
+        let list = List::new(
+            state
+                .get_todos()
+                .map(|x| {
+                    format!(
+                        "{bucket} {item}",
+                        bucket = x.bucket().unwrap_or_default(),
+                        item = x.item()
+                    )
+                })
+                .enumerate()
+                .map(|(i, x)| {
+                    if !self.input_focused && i == self.selected {
+                        x.blue().bold()
+                    } else {
+                        x.into()
+                    }
+                }),
+        )
         .style(list_style)
         .block(if self.input_focused {
             Block::bordered().title(" Todo Items ")
@@ -85,7 +98,8 @@ impl Window for TodoWindow {
                 ..
             }) => {
                 if self.input_focused {
-                    state.push_todo(self.input.value().to_string());
+                    // TODO: update this to consider the bucket input!
+                    state.push_todo(TodoItem::new(self.input.value().to_string(), None));
                     self.input.reset();
                 } else if self.selected < state.todo_count() {
                     let _ = state.delete_todo(self.selected);
