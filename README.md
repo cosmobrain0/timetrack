@@ -13,12 +13,6 @@ If the file does not exist, or directories in the file path do not exist, this p
 
 # TODO
 
-## Refactoring: Window Trait
-
-All windows should implement a `trait Window`, and `App::current_window` should be a `Box<dyn Window>`.
-Then, instead of having a different field on `App` for every window, we can have a `[Box<dyn Window>; 3]` or maybe a `Vec<Box<dyn Window>>`.
-This allows a lot of repetitive `match` statements to be reduced to just `self.current_window`.
-
 ## Feature: Todo List Buckets
 
 It should be possible to categorise todo list items in buckets, and to switch between different buckets
