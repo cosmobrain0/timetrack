@@ -4,7 +4,7 @@ mod state;
 mod todo;
 mod track;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
