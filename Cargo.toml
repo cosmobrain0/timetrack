@@ -9,8 +9,12 @@ color-eyre = "0.6.5"
 colored = "3.0.0"
 crossterm = "0.29.0"
 ctrlc = "3.4.7"
-mac-notification-sys = "0.6.6"
+mac-notification-sys = { version = "0.6.6", optional = true }
 ratatui = "0.29.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 tui-input = "0.14.0"
+
+[features]
+mac-notifications = ["dep:mac-notification-sys"]
+default = ["mac-notifications"]

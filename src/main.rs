@@ -119,6 +119,8 @@ impl App {
                     .activity_by_id(activity_id)
                     .expect("should be able to get activity")
                     .name();
+
+                #[cfg(feature = "mac-notifications")]
                 mac_notification_sys::send_notification(
                     "Pomodoro Session Over!!",
                     Some(activity_name),
