@@ -13,10 +13,6 @@ If the file does not exist, or directories in the file path do not exist, this p
 
 # TODO
 
-## Feature: Help Page / Manual
-
-A paragraph explaining how to use this app
-
 ## Refactoring: Window Trait
 
 All windows should implement a `trait Window`, and `App::current_window` should be a `Box<dyn Window>`.
