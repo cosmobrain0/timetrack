@@ -15,6 +15,7 @@ pub struct StateBuilder {
     /// NOTE: this was used in an older version, before buckets
     pub todo: Option<Vec<String>>,
     pub todo_v2: Option<Vec<TodoItem>>,
+    pub buckets: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +43,7 @@ impl From<StateBuilder> for State {
         let buckets = todo
             .iter()
             .filter_map(|x| x.bucket().map(ToString::to_string))
+            .chain(value.buckets.unwrap_or_default().into_iter())
             .collect::<HashSet<_>>();
         Self {
             next_activity_id: value.next_activity_id.unwrap_or_else(|| {
@@ -270,6 +272,7 @@ impl State {
                 current: self.current,
                 todo: None,
                 todo_v2: Some(self.todo.clone()),
+                buckets: Some(self.buckets.iter().map(ToString::to_string).collect()),
             })
             .expect("should be able to convert to string"),
         )?;
@@ -309,15 +312,6 @@ impl State {
     pub fn delete_todo(&mut self, id: usize) -> Result<TodoItem, TodoDeletionError> {
         if id < self.todo.len() {
             let item = self.todo.remove(id);
-            if let Some(removed_item_bucket) = item.bucket() {
-                if !self
-                    .todo
-                    .iter()
-                    .any(|x| x.bucket().is_some_and(|x| x == removed_item_bucket))
-                {
-                    self.buckets.remove(removed_item_bucket);
-                }
-            }
             Ok(item)
         } else {
             Err(TodoDeletionError::InvalidId)
@@ -339,6 +333,35 @@ impl State {
 
     pub fn todo_count(&self) -> usize {
         self.todo.len()
+    }
+}
+impl State {
+    pub fn buckets(&self) -> Vec<&str> {
+        let mut buckets = self.buckets.iter().map(String::as_str).collect::<Vec<_>>();
+        buckets.sort();
+        buckets
+    }
+
+    pub fn bucket_count(&self) -> usize {
+        self.buckets.len()
+    }
+
+    /// Returns wether or not the bucket was newly added
+    pub fn create_bucket(&mut self, bucket: String) -> bool {
+        self.buckets.insert(bucket)
+    }
+
+    pub fn bucket_size(&self, bucket: Option<&str>) -> usize {
+        self.todo.iter().filter(|x| x.bucket() == bucket).count()
+    }
+
+    /// Returns true if the bucket is deleted (if and only if the bucket existed and was empty)
+    pub fn delete_bucket(&mut self, bucket: &str) -> bool {
+        if self.bucket_size(Some(bucket)) == 0 {
+            self.buckets.remove(bucket)
+        } else {
+            false
+        }
     }
 }
 impl Drop for State {
