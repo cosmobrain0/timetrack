@@ -296,6 +296,29 @@ impl State {
     pub(crate) fn pomo_minutes(&self) -> Option<usize> {
         self.current.as_ref().and_then(|x| x.pomo_minutes)
     }
+
+    pub(crate) fn get_todo_mut(&mut self, x: usize) -> Option<&mut TodoItem> {
+        self.todo.get_mut(x)
+    }
+
+    pub(crate) fn delete_todo_in_bucket(
+        &mut self,
+        selected_todo: usize,
+        bucket: Option<&str>,
+    ) -> Result<TodoItem, TodoDeletionError> {
+        if let Some(i) = self
+            .todo
+            .iter()
+            .enumerate()
+            .filter(|(_, x)| x.bucket() == bucket)
+            .nth(selected_todo)
+            .map(|(i, _)| i)
+        {
+            self.delete_todo(i)
+        } else {
+            Err(TodoDeletionError::InvalidIdOrBucket)
+        }
+    }
 }
 impl State {
     pub fn get_todos(&self) -> std::slice::Iter<'_, TodoItem> {
@@ -318,16 +341,16 @@ impl State {
         }
     }
 
-    pub fn swap_todos(&mut self, id1: usize, id2: usize) -> Result<(), TodoSwapError> {
+    pub fn swap_todos_in_bucket(
+        &mut self,
+        id1: usize,
+        id2: usize,
+        bucket: Option<&str>,
+    ) -> Result<(), TodoSwapError> {
         if id1 == id2 {
             Err(TodoSwapError::EqualIds)
-        } else if id1 >= self.todo.len() {
-            Err(TodoSwapError::FirstInvalid)
-        } else if id2 >= self.todo.len() {
-            Err(TodoSwapError::SecondInvalid)
         } else {
-            self.todo.swap(id1, id2);
-            Ok(())
+            todo!("How do we swap stuff?")
         }
     }
 
@@ -363,6 +386,10 @@ impl State {
             false
         }
     }
+
+    pub fn get_todos_by_bucket(&self, bucket: Option<&str>) -> impl Iterator<Item = &TodoItem> {
+        self.todo.iter().filter(move |x| x.bucket() == bucket)
+    }
 }
 impl Drop for State {
     fn drop(&mut self) {
@@ -373,6 +400,7 @@ impl Drop for State {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoDeletionError {
     InvalidId,
+    InvalidIdOrBucket,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -380,6 +408,7 @@ pub enum TodoSwapError {
     SecondInvalid,
     FirstInvalid,
     EqualIds,
+    InvalidBucket,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

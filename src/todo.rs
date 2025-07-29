@@ -1,4 +1,4 @@
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::widgets::{List, Widget};
@@ -21,6 +21,7 @@ pub(crate) struct TodoWindow {
     selected_bucket: usize,
     todo_input: Input,
     bucket_input: Input,
+    bucket_widget_purpose: BucketWidgetPurpose,
 }
 impl TodoWindow {
     pub fn new() -> Self {
@@ -30,6 +31,22 @@ impl TodoWindow {
             todo_input: Input::new(String::new()),
             bucket_input: Input::new(String::new()),
             selected_bucket: 0,
+            bucket_widget_purpose: BucketWidgetPurpose::Browse,
+        }
+    }
+}
+impl TodoWindow {
+    fn get_selected_todo<'a>(&self, state: &'a State) -> Option<&'a TodoItem> {
+        let bucket = self.get_selected_bucket(state);
+        state.get_todos_by_bucket(bucket).nth(self.selected_todo)
+    }
+
+    fn get_selected_bucket<'a>(&self, state: &'a State) -> Option<&'a str> {
+        if self.selected_todo == 0 {
+            None
+        } else {
+            (self.selected_todo - 1 < state.bucket_count())
+                .then(|| state.buckets().remove(self.selected_todo - 1))
         }
     }
 }
@@ -65,11 +82,7 @@ impl Window for TodoWindow {
                 is_focused: self.focused_widget == TodoWidget::Todos,
                 todos: state.get_todos().collect(),
                 selected: self.selected_todo,
-                selected_bucket: if self.selected_bucket == 0 {
-                    None
-                } else {
-                    state.buckets().get(self.selected_bucket - 1).map(|x| *x)
-                },
+                selected_bucket: self.get_selected_bucket(state),
             },
             list_area,
         );
@@ -79,145 +92,149 @@ impl Window for TodoWindow {
                 is_focused: self.focused_widget == TodoWidget::Buckets,
                 buckets: [None]
                     .into_iter()
-                    .chain(state.buckets().into_iter().map(Option::Some))
+                    .chain(
+                        state
+                            .buckets()
+                            .into_iter()
+                            .map(|name| (name, state.bucket_size(Some(name)) == 0))
+                            .map(Option::Some),
+                    )
                     .collect(),
                 selected: self.selected_bucket,
+                purpose: self.bucket_widget_purpose,
             },
             buckets_area,
         );
     }
 
     fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
+        use KeyCode::*;
         match event {
             Event::Key(KeyEvent {
-                code: KeyCode::Tab, ..
-            }) => {
-                self.focused_widget = match self.focused_widget {
-                    TodoWidget::Todos => TodoWidget::TodoInput,
-                    TodoWidget::TodoInput => TodoWidget::Buckets,
-                    TodoWidget::Buckets => TodoWidget::BucketInput,
-                    TodoWidget::BucketInput => TodoWidget::Todos,
-                }
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                ..
-            }) => {
-                if self.focused_widget == TodoWidget::TodoInput {
-                    // TODO: update this to consider the bucket input!
-                    let bucket = if self.selected_bucket == 0 {
-                        None
-                    } else {
-                        state
-                            .buckets()
-                            .get(self.selected_bucket - 1)
-                            .map(ToString::to_string)
-                    };
-                    state.push_todo(TodoItem::new(self.todo_input.value().to_string(), bucket));
-                    self.todo_input.reset();
-                } else if self.focused_widget == TodoWidget::BucketInput {
-                    state.create_bucket(self.bucket_input.value().to_string());
-                    self.bucket_input.reset();
-                } else if self.focused_widget == TodoWidget::Todos {
-                    if self.selected_todo < state.todo_count() {
-                        let _ = state.delete_todo(self.selected_todo);
-                        self.selected_todo =
-                            self.selected_todo.min(state.todo_count().saturating_sub(1));
+                code,
+                modifiers,
+                kind: KeyEventKind::Press | KeyEventKind::Repeat,
+                state: _state,
+            }) => match (code, modifiers) {
+                (code, &KeyModifiers::NONE) => match code {
+                    Tab if self.bucket_widget_purpose == BucketWidgetPurpose::Browse => {
+                        self.focused_widget = match self.focused_widget {
+                            TodoWidget::Todos => TodoWidget::TodoInput,
+                            TodoWidget::TodoInput => TodoWidget::Buckets,
+                            TodoWidget::Buckets => TodoWidget::BucketInput,
+                            TodoWidget::BucketInput => TodoWidget::Todos,
+                        }
                     }
-                } else if self.focused_widget == TodoWidget::Buckets {
-                    if self.selected_bucket > 0
-                        && let Some(bucket) = state
-                            .buckets()
-                            .get(self.selected_bucket - 1)
-                            .map(|x| x.to_string())
+                    Enter => {
+                        if self.focused_widget == TodoWidget::TodoInput {
+                            let bucket = self.get_selected_bucket(state).map(ToString::to_string);
+                            state.push_todo(TodoItem::new(
+                                self.todo_input.value().to_string(),
+                                bucket,
+                            ));
+                            self.todo_input.reset();
+                        } else if self.focused_widget == TodoWidget::BucketInput {
+                            state.create_bucket(self.bucket_input.value().to_string());
+                            self.bucket_input.reset();
+                        } else if self.focused_widget == TodoWidget::Todos {
+                            let original_bucket_size =
+                                state.bucket_size(self.get_selected_bucket(state));
+                            if self.selected_todo < original_bucket_size {
+                                let bucket =
+                                    self.get_selected_bucket(state).map(ToString::to_string);
+                                let _ = state.delete_todo_in_bucket(
+                                    self.selected_todo,
+                                    bucket.as_ref().map(|x| x.as_str()),
+                                );
+                                self.selected_todo = self
+                                    .selected_todo
+                                    .min(original_bucket_size.saturating_sub(2));
+                            }
+                        } else if self.focused_widget == TodoWidget::Buckets {
+                            if let Some(bucket) =
+                                self.get_selected_bucket(state).map(ToString::to_string)
+                            {
+                                state.delete_bucket(bucket.as_str());
+                            }
+                        }
+                    }
+                    Char('q')
+                        if self.focused_widget != TodoWidget::TodoInput
+                            && self.focused_widget != TodoWidget::BucketInput =>
                     {
-                        state.delete_bucket(bucket.as_str());
+                        return WindowActionResult::Exit;
                     }
-                }
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                ..
-            }) if self.focused_widget != TodoWidget::TodoInput
-                && self.focused_widget != TodoWidget::BucketInput =>
-            {
-                return WindowActionResult::Exit;
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Down,
-                ..
-            }) if self.focused_widget == TodoWidget::Todos => {
-                self.selected_todo =
-                    (self.selected_todo + 1).min(state.todo_count().saturating_sub(1));
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Up, ..
-            }) if self.focused_widget == TodoWidget::Todos => {
-                self.selected_todo = self.selected_todo.saturating_sub(1);
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Down,
-                ..
-            }) if self.focused_widget == TodoWidget::Buckets => {
-                self.selected_bucket = (self.selected_bucket + 1).min(state.bucket_count());
-                // bucket_count() ignores the None bucket,
-                // so we don't need to subtract 1 here
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Up, ..
-            }) if self.focused_widget == TodoWidget::Buckets => {
-                self.selected_bucket = self.selected_bucket.saturating_sub(1);
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Left,
-                ..
-            }) => {
-                if self.selected_todo > 0 && self.selected_todo < state.todo_count() {
-                    let _ = state.swap_todos(self.selected_todo, self.selected_todo - 1);
-                    self.selected_todo -= 1;
-                }
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Right,
-                ..
-            }) => {
-                if state.todo_count() > 1 && self.selected_todo < state.todo_count() - 1 {
-                    let _ = state.swap_todos(self.selected_todo, self.selected_todo + 1);
-                    self.selected_todo += 1;
-                }
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('1'),
-                ..
-            }) => {
-                if self.focused_widget != TodoWidget::TodoInput {
-                    return WindowActionResult::FirstWindow;
-                }
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('2'),
-                ..
-            }) => {
-                if self.focused_widget != TodoWidget::TodoInput {
-                    return WindowActionResult::SecondWindow;
-                }
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('3'),
-                ..
-            }) => {
-                if self.focused_widget != TodoWidget::TodoInput {
-                    return WindowActionResult::ThirdWindow;
-                }
-            }
-
-            _ => {
-                if self.focused_widget == TodoWidget::TodoInput {
-                    self.todo_input.handle_event(event);
-                } else if self.focused_widget == TodoWidget::BucketInput {
-                    self.bucket_input.handle_event(event);
-                }
-            }
+                    Down if self.focused_widget == TodoWidget::Todos => {
+                        self.selected_todo = (self.selected_todo + 1)
+                            .min(state.bucket_size(self.get_selected_bucket(state)));
+                    }
+                    Up if self.focused_widget == TodoWidget::Todos => {
+                        self.selected_todo = self.selected_todo.saturating_sub(1);
+                    }
+                    Down if self.focused_widget == TodoWidget::Buckets => {
+                        self.selected_bucket = (self.selected_bucket + 1).min(state.bucket_count());
+                        self.selected_todo = 0;
+                    }
+                    Up if self.focused_widget == TodoWidget::Buckets => {
+                        self.selected_bucket = self.selected_bucket.saturating_sub(1);
+                        self.selected_todo = 0;
+                    }
+                    Left => {
+                        if self.selected_todo > 0
+                            && self.selected_todo
+                                < state.bucket_size(self.get_selected_bucket(state))
+                        {
+                            let _ = state.swap_todos(self.selected_todo, self.selected_todo - 1);
+                            self.selected_todo -= 1;
+                        }
+                    }
+                    Right => {
+                        let bucket_size = state.bucket_size(self.get_selected_bucket(state));
+                        if bucket_size > 1 && self.selected_todo < bucket_size - 1 {
+                            let _ = state.swap_todos(self.selected_todo, self.selected_todo + 1);
+                            self.selected_todo += 1;
+                        }
+                    }
+                    Char(' ') if self.focused_widget == TodoWidget::Todos => {
+                        self.focused_widget = TodoWidget::Buckets;
+                        self.bucket_widget_purpose = BucketWidgetPurpose::Move(self.selected_todo);
+                    }
+                    Char(' ') if self.focused_widget == TodoWidget::Buckets => {
+                        if let BucketWidgetPurpose::Move(x) = self.bucket_widget_purpose {
+                            let bucket = self.get_selected_bucket(state).map(ToString::to_string);
+                            if let Some(todo) = state.get_todo_mut(x) {
+                                todo.set_bucket(bucket);
+                            }
+                            self.bucket_widget_purpose = BucketWidgetPurpose::Browse;
+                            self.focused_widget = TodoWidget::Todos;
+                        }
+                    }
+                    Char('1') => {
+                        if self.focused_widget != TodoWidget::TodoInput {
+                            return WindowActionResult::FirstWindow;
+                        }
+                    }
+                    Char('2') => {
+                        if self.focused_widget != TodoWidget::TodoInput {
+                            return WindowActionResult::SecondWindow;
+                        }
+                    }
+                    Char('3') => {
+                        if self.focused_widget != TodoWidget::TodoInput {
+                            return WindowActionResult::ThirdWindow;
+                        }
+                    }
+                    _ => {
+                        if self.focused_widget == TodoWidget::TodoInput {
+                            self.todo_input.handle_event(event);
+                        } else if self.focused_widget == TodoWidget::BucketInput {
+                            self.bucket_input.handle_event(event);
+                        }
+                    }
+                },
+                _ => (),
+            },
+            _ => (),
         }
         WindowActionResult::Continue
     }
@@ -253,8 +270,8 @@ impl<'a> Widget for &TodoListWidget<'a> {
             ("Delete", "Enter"),
             ("Move Up", "Left"),
             ("Move Down", "Right"),
+            ("Change Bucket", "Space"),
         ]);
-        // TODO: update this with better formatting!
         List::new(
             self.todos
                 .iter()
@@ -289,8 +306,9 @@ impl<'a> Widget for &TodoListWidget<'a> {
 
 struct BucketListWidget<'a> {
     is_focused: bool,
-    buckets: Vec<Option<&'a str>>,
+    buckets: Vec<Option<(&'a str, bool)>>,
     selected: usize,
+    purpose: BucketWidgetPurpose,
 }
 impl<'a> Widget for &BucketListWidget<'a> {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
@@ -302,13 +320,29 @@ impl<'a> Widget for &BucketListWidget<'a> {
         } else {
             Color::Yellow.into()
         };
-        let list_instructions =
-            instruction_line(vec![("Scroll Up", "Up"), ("Scroll Down", "Down")]);
-        // TODO: update this with better formatting!
+        let list_instructions = match self.purpose {
+            BucketWidgetPurpose::Browse => vec![("Scroll Up", "Up"), ("Scroll Down", "Down")],
+            BucketWidgetPurpose::Move(_) => vec![
+                ("Scroll Up", "Up"),
+                ("Scroll Down", "Down"),
+                ("Select", "Space"),
+            ],
+        };
+        let list_instructions = instruction_line(list_instructions);
         List::new(
             self.buckets
                 .iter()
-                .map(|x| format!("<{bucket}>", bucket = x.unwrap_or("N/A"),))
+                .map(|x| {
+                    format!(
+                        "<{}>",
+                        x.map(|(name, deletable)| if deletable {
+                            name.dark_gray()
+                        } else {
+                            name.into()
+                        })
+                        .unwrap_or("N/A".into())
+                    )
+                })
                 .enumerate()
                 .map(|(i, x)| {
                     if self.is_focused && i == self.selected {
@@ -320,12 +354,23 @@ impl<'a> Widget for &BucketListWidget<'a> {
         )
         .style(list_style)
         .block(if !self.is_focused {
-            Block::bordered().title(" Todo Items ")
+            Block::bordered().title(match self.purpose {
+                BucketWidgetPurpose::Browse => " Buckets ",
+                BucketWidgetPurpose::Move(_) => " Move to Bucket ",
+            })
         } else {
             Block::bordered()
-                .title(" Todo Items ")
+                .title(match self.purpose {
+                    BucketWidgetPurpose::Browse => " Buckets ",
+                    BucketWidgetPurpose::Move(_) => " Move to Bucket ",
+                })
                 .title_bottom(list_instructions.centered())
         })
         .render(area, buf);
     }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BucketWidgetPurpose {
+    Browse,
+    Move(usize),
 }
