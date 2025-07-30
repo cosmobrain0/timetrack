@@ -11,7 +11,7 @@ use ratatui::{
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::input_widget::InputWidget;
-use crate::state::{Bucket, State, TodoItem};
+use crate::state::{Bucket, EMPTY_BUCKET_NAME, State, TodoItem};
 use crate::{Window, WindowActionResult, instruction_line};
 
 #[derive(Debug)]
@@ -152,7 +152,9 @@ impl Window for TodoWindow {
                                     .min(bucket.todos().count().saturating_sub(1));
                             }
                         } else if self.focused_widget == TodoWidget::Buckets {
-                            state.delete_bucket(self.selected_bucket);
+                            if state.delete_bucket(self.selected_bucket) {
+                                self.selected_bucket = self.selected_bucket.saturating_sub(1);
+                            }
                         }
                     }
                     Char('q')
@@ -346,23 +348,19 @@ impl<'a> Widget for &BucketListWidget<'a> {
         List::new(
             self.buckets
                 .iter()
-                .map(|x| {
-                    format!(
-                        "<{}>",
-                        if x.todos().count() == 0 {
-                            x.name().dark_gray()
-                        } else {
-                            x.name().into()
-                        }
-                    )
-                })
                 .enumerate()
                 .map(|(i, x)| {
-                    if self.is_focused && i == self.selected {
-                        x.blue().bold()
-                    } else {
-                        x.into()
-                    }
+                    (
+                        x.todos().count() == 0 && x.name() != EMPTY_BUCKET_NAME,
+                        self.is_focused && i == self.selected,
+                        format!("<{}>", x.name()),
+                    )
+                })
+                .map(|(deletable, focused, x)| match (focused, deletable) {
+                    (true, true) => x.on_dark_gray().blue().bold(),
+                    (true, false) => x.blue().bold(),
+                    (false, true) => x.dark_gray(),
+                    (false, false) => x.into(),
                 }),
         )
         .style(list_style)
