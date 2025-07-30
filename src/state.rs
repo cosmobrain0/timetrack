@@ -1,8 +1,9 @@
-use std::{collections::HashSet, fmt::Display};
+use std::fmt::Display;
 
 use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
 use ratatui::{style::Stylize, text::Line};
 use serde::{Deserialize, Serialize};
+use todos_and_buckets::{Bucket, TodoItem, TodoItemOld};
 
 use crate::stored_state_file_path;
 
@@ -14,9 +15,11 @@ pub struct StateBuilder {
     pub current: Option<CurrentActionInfo>,
     /// NOTE: this was used in an older version, before buckets
     pub todo: Option<Vec<String>>,
-    pub todo_v2: Option<Vec<TodoItem>>,
-    pub buckets: Option<Vec<String>>,
+    pub todo_v2: Option<Vec<TodoItemOld>>,
+    pub buckets: Option<Vec<Bucket>>,
 }
+
+const EMPTY_BUCKET_NAME: &str = "N/A";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
@@ -24,27 +27,39 @@ pub struct State {
     activities: Vec<Activity>,
     next_activity_id: usize,
     current: Option<CurrentActionInfo>,
-    todo: Vec<TodoItem>,
-    /// Used to cache the results of buckets calculations
-    /// Initially `None`, changed to `Some` when it needs to be calculated
-    /// Once it becomes `Some`, it will be updated every time
-    /// the todo list becomes out of date
-    buckets: HashSet<String>,
+    buckets: Vec<Bucket>,
 }
 impl From<StateBuilder> for State {
     fn from(value: StateBuilder) -> Self {
-        let todo: Vec<_> = value
-            .todo
-            .unwrap_or_default()
-            .into_iter()
-            .map(|x| TodoItem::new(x, None))
-            .chain(value.todo_v2.unwrap_or_default().into_iter())
-            .collect();
-        let buckets = todo
-            .iter()
-            .filter_map(|x| x.bucket().map(ToString::to_string))
-            .chain(value.buckets.unwrap_or_default().into_iter())
-            .collect::<HashSet<_>>();
+        let mut buckets = value.buckets.unwrap_or_default();
+        // REQUIREMENT: `buckets` must contain an `N/A` bucket
+        let default_bucket = if let Some(default_bucket) =
+            buckets.iter_mut().find(|x| x.name() == EMPTY_BUCKET_NAME)
+        {
+            default_bucket
+        } else {
+            buckets.push(Bucket::new(String::from(EMPTY_BUCKET_NAME), vec![]));
+            let last_index = buckets.len() - 1;
+            &mut buckets[last_index]
+        };
+
+        for old_todo in value.todo.unwrap_or_default() {
+            default_bucket.push_todo(TodoItem::new(old_todo));
+        }
+
+        for todo in value.todo_v2.unwrap_or_default() {
+            if let Some(target_bucket) = buckets.iter_mut().find(|x| {
+                x.name()
+                    == todo
+                        .bucket
+                        .as_ref()
+                        .map(|x| x.as_str())
+                        .unwrap_or(EMPTY_BUCKET_NAME)
+            }) {
+                target_bucket.push_todo(TodoItem::new(todo.item));
+            }
+        }
+
         Self {
             next_activity_id: value.next_activity_id.unwrap_or_else(|| {
                 value
@@ -57,7 +72,6 @@ impl From<StateBuilder> for State {
             date: value.date.unwrap_or_else(|| Utc::now().date_naive()),
             current: value.current,
             buckets,
-            todo,
         }
     }
 }
@@ -74,7 +88,6 @@ impl State {
             next_activity_id: self.next_activity_id,
             current: self.current,
             buckets: self.buckets.clone(),
-            todo: self.todo.clone(),
         }
     }
 
@@ -271,8 +284,8 @@ impl State {
                 next_activity_id: Some(self.next_activity_id),
                 current: self.current,
                 todo: None,
-                todo_v2: Some(self.todo.clone()),
-                buckets: Some(self.buckets.iter().map(ToString::to_string).collect()),
+                buckets: Some(self.buckets.clone()),
+                todo_v2: None,
             })
             .expect("should be able to convert to string"),
         )?;
@@ -295,100 +308,6 @@ impl State {
 
     pub(crate) fn pomo_minutes(&self) -> Option<usize> {
         self.current.as_ref().and_then(|x| x.pomo_minutes)
-    }
-
-    pub(crate) fn get_todo_mut(&mut self, x: usize) -> Option<&mut TodoItem> {
-        self.todo.get_mut(x)
-    }
-
-    pub(crate) fn delete_todo_in_bucket(
-        &mut self,
-        selected_todo: usize,
-        bucket: Option<&str>,
-    ) -> Result<TodoItem, TodoDeletionError> {
-        if let Some(i) = self
-            .todo
-            .iter()
-            .enumerate()
-            .filter(|(_, x)| x.bucket() == bucket)
-            .nth(selected_todo)
-            .map(|(i, _)| i)
-        {
-            self.delete_todo(i)
-        } else {
-            Err(TodoDeletionError::InvalidIdOrBucket)
-        }
-    }
-}
-impl State {
-    pub fn get_todos(&self) -> std::slice::Iter<'_, TodoItem> {
-        self.todo.iter()
-    }
-
-    pub fn push_todo(&mut self, todo: TodoItem) {
-        if let Some(bucket) = todo.bucket() {
-            self.buckets.insert(bucket.to_string());
-        }
-        self.todo.push(todo);
-    }
-
-    pub fn delete_todo(&mut self, id: usize) -> Result<TodoItem, TodoDeletionError> {
-        if id < self.todo.len() {
-            let item = self.todo.remove(id);
-            Ok(item)
-        } else {
-            Err(TodoDeletionError::InvalidId)
-        }
-    }
-
-    pub fn swap_todos_in_bucket(
-        &mut self,
-        id1: usize,
-        id2: usize,
-        bucket: Option<&str>,
-    ) -> Result<(), TodoSwapError> {
-        if id1 == id2 {
-            Err(TodoSwapError::EqualIds)
-        } else {
-            todo!("How do we swap stuff?")
-        }
-    }
-
-    pub fn todo_count(&self) -> usize {
-        self.todo.len()
-    }
-}
-impl State {
-    pub fn buckets(&self) -> Vec<&str> {
-        let mut buckets = self.buckets.iter().map(String::as_str).collect::<Vec<_>>();
-        buckets.sort();
-        buckets
-    }
-
-    pub fn bucket_count(&self) -> usize {
-        self.buckets.len()
-    }
-
-    /// Returns wether or not the bucket was newly added
-    pub fn create_bucket(&mut self, bucket: String) -> bool {
-        self.buckets.insert(bucket)
-    }
-
-    pub fn bucket_size(&self, bucket: Option<&str>) -> usize {
-        self.todo.iter().filter(|x| x.bucket() == bucket).count()
-    }
-
-    /// Returns true if the bucket is deleted (if and only if the bucket existed and was empty)
-    pub fn delete_bucket(&mut self, bucket: &str) -> bool {
-        if self.bucket_size(Some(bucket)) == 0 {
-            self.buckets.remove(bucket)
-        } else {
-            false
-        }
-    }
-
-    pub fn get_todos_by_bucket(&self, bucket: Option<&str>) -> impl Iterator<Item = &TodoItem> {
-        self.todo.iter().filter(move |x| x.bucket() == bucket)
     }
 }
 impl Drop for State {
@@ -494,33 +413,65 @@ impl Display for ActivityId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TodoItem {
-    item: String,
-    bucket: Option<String>,
-}
-impl TodoItem {
-    pub fn new(item: String, bucket: Option<String>) -> Self {
-        Self { item, bucket }
+mod todos_and_buckets {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct TodoItemOld {
+        pub item: String,
+        pub bucket: Option<String>,
     }
 
-    pub fn item(&self) -> &str {
-        &self.item
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct TodoItem(String);
+    impl TodoItem {
+        pub fn new(item: String) -> Self {
+            Self(item)
+        }
+
+        pub fn item(&self) -> &str {
+            &self.0
+        }
     }
 
-    pub fn bucket(&self) -> Option<&str> {
-        self.bucket.as_ref().map(String::as_str)
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Bucket {
+        name: String,
+        todos: Vec<TodoItem>,
     }
+    impl std::hash::Hash for Bucket {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.name.hash(state);
+        }
+    }
+    impl Bucket {
+        pub fn new(name: String, todos: Vec<TodoItem>) -> Self {
+            Self { name, todos }
+        }
 
-    pub fn item_mut(&mut self) -> &mut String {
-        &mut self.item
-    }
+        pub fn name(&self) -> &str {
+            &self.name
+        }
+        pub fn todos(&self) -> impl Iterator<Item = &TodoItem> {
+            self.todos.iter()
+        }
 
-    pub fn bucket_mut(&mut self) -> Option<&mut String> {
-        self.bucket.as_mut()
-    }
+        pub fn set_name(&mut self, name: String) {
+            self.name = name;
+        }
 
-    pub fn set_bucket(&mut self, bucket: Option<String>) {
-        self.bucket = bucket;
+        pub fn todos_mut(&mut self) -> &mut Vec<TodoItem> {
+            &mut self.todos
+        }
+
+        pub(crate) fn push_todo(&mut self, todo: TodoItem) {
+            self.todos.push(todo);
+        }
     }
+    impl PartialEq for Bucket {
+        fn eq(&self, other: &Self) -> bool {
+            self.name == other.name
+        }
+    }
+    impl Eq for Bucket {}
 }
