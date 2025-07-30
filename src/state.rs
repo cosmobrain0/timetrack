@@ -3,7 +3,7 @@ use std::fmt::Display;
 use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
 use ratatui::{style::Stylize, text::Line};
 use serde::{Deserialize, Serialize};
-use todos_and_buckets::{Bucket, TodoItem, TodoItemOld};
+pub use todos_and_buckets::{Bucket, TodoItem, TodoItemOld};
 
 use crate::stored_state_file_path;
 
@@ -19,7 +19,7 @@ pub struct StateBuilder {
     pub buckets: Option<Vec<Bucket>>,
 }
 
-const EMPTY_BUCKET_NAME: &str = "N/A";
+pub const EMPTY_BUCKET_NAME: &str = "N/A";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
@@ -308,6 +308,39 @@ impl State {
 
     pub(crate) fn pomo_minutes(&self) -> Option<usize> {
         self.current.as_ref().and_then(|x| x.pomo_minutes)
+    }
+}
+impl State {
+    pub(crate) fn get_buckets(&self) -> impl Iterator<Item = &Bucket> {
+        self.buckets.iter()
+    }
+
+    pub(crate) fn get_buckets_mut(&mut self) -> impl Iterator<Item = &mut Bucket> {
+        self.buckets.iter_mut()
+    }
+
+    /// Returns true if the bucket was added,
+    /// and false if its todos were combined
+    /// with an already existing bucket
+    pub(crate) fn create_bucket(&mut self, bucket: Bucket) -> bool {
+        if let Some(stored_bucket) = self.get_buckets_mut().find(|x| *x == &bucket) {
+            stored_bucket
+                .todos_mut()
+                .extend(bucket.todos().map(TodoItem::clone));
+            false
+        } else {
+            self.buckets.push(bucket);
+            true
+        }
+    }
+
+    pub(crate) fn delete_bucket(&mut self, index: usize) -> bool {
+        if self.buckets.len() > index && self.buckets[index].todos().count() == 0 {
+            self.buckets.remove(index);
+            true
+        } else {
+            false
+        }
     }
 }
 impl Drop for State {
