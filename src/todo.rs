@@ -181,7 +181,7 @@ impl Window for TodoWindow {
                         self.selected_bucket = self.selected_bucket.saturating_sub(1);
                         self.selected_todo = 0;
                     }
-                    Left => {
+                    Left if self.focused_widget == TodoWidget::Todos => {
                         if self.selected_todo > 0 {
                             self.get_selected_bucket_mut(state)
                                 .todos_mut()
@@ -189,7 +189,7 @@ impl Window for TodoWindow {
                             self.selected_todo -= 1;
                         }
                     }
-                    Right => {
+                    Right if self.focused_widget == TodoWidget::Todos => {
                         let bucket_size = self.get_selected_bucket(state).todos().count();
                         if bucket_size > 1 && self.selected_todo < bucket_size - 1 {
                             self.get_selected_bucket_mut(state)
@@ -199,11 +199,13 @@ impl Window for TodoWindow {
                         }
                     }
                     Char(' ') if self.focused_widget == TodoWidget::Todos => {
-                        self.focused_widget = TodoWidget::Buckets;
-                        self.bucket_widget_purpose = BucketWidgetPurpose::Move {
-                            selected_bucket: self.selected_bucket,
-                            selected_todo: self.selected_todo,
-                        };
+                        if self.selected_todo < self.get_selected_bucket(state).todos().count() {
+                            self.focused_widget = TodoWidget::Buckets;
+                            self.bucket_widget_purpose = BucketWidgetPurpose::Move {
+                                selected_bucket: self.selected_bucket,
+                                selected_todo: self.selected_todo,
+                            };
+                        }
                     }
                     Char(' ') if self.focused_widget == TodoWidget::Buckets => {
                         if let BucketWidgetPurpose::Move {

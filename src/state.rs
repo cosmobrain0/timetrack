@@ -16,7 +16,8 @@ pub struct StateBuilder {
     /// NOTE: this was used in an older version, before buckets
     pub todo: Option<Vec<String>>,
     pub todo_v2: Option<Vec<TodoItemOld>>,
-    pub buckets: Option<Vec<Bucket>>,
+    pub buckets: Option<Vec<String>>,
+    pub buckets_v2: Option<Vec<Bucket>>,
 }
 
 pub const EMPTY_BUCKET_NAME: &str = "N/A";
@@ -31,7 +32,12 @@ pub struct State {
 }
 impl From<StateBuilder> for State {
     fn from(value: StateBuilder) -> Self {
-        let mut buckets = value.buckets.unwrap_or_default();
+        let mut buckets = value.buckets_v2.unwrap_or_default();
+        for name in value.buckets.unwrap_or_default() {
+            if buckets.iter().map(|x| x.name()).all(|x| x != name.as_str()) {
+                buckets.push(Bucket::new(name, vec![]));
+            }
+        }
         // REQUIREMENT: `buckets` must contain an `N/A` bucket
         let default_bucket = if let Some(default_bucket) =
             buckets.iter_mut().find(|x| x.name() == EMPTY_BUCKET_NAME)
@@ -284,8 +290,9 @@ impl State {
                 next_activity_id: Some(self.next_activity_id),
                 current: self.current,
                 todo: None,
-                buckets: Some(self.buckets.clone()),
+                buckets_v2: Some(self.buckets.clone()),
                 todo_v2: None,
+                buckets: None,
             })
             .expect("should be able to convert to string"),
         )?;
