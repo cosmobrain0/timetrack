@@ -20,7 +20,7 @@ pub struct StateBuilder {
     pub buckets_v2: Option<Vec<Bucket>>,
 }
 
-pub const EMPTY_BUCKET_NAME: &str = "N/A";
+pub const DEFAULT_BUCKET_NAME: &str = "N/A";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
@@ -40,11 +40,11 @@ impl From<StateBuilder> for State {
         }
         // REQUIREMENT: `buckets` must contain an `N/A` bucket
         let default_bucket = if let Some(default_bucket) =
-            buckets.iter_mut().find(|x| x.name() == EMPTY_BUCKET_NAME)
+            buckets.iter_mut().find(|x| x.name() == DEFAULT_BUCKET_NAME)
         {
             default_bucket
         } else {
-            buckets.push(Bucket::new(String::from(EMPTY_BUCKET_NAME), vec![]));
+            buckets.push(Bucket::new(String::from(DEFAULT_BUCKET_NAME), vec![]));
             let last_index = buckets.len() - 1;
             &mut buckets[last_index]
         };
@@ -60,7 +60,7 @@ impl From<StateBuilder> for State {
                         .bucket
                         .as_ref()
                         .map(|x| x.as_str())
-                        .unwrap_or(EMPTY_BUCKET_NAME)
+                        .unwrap_or(DEFAULT_BUCKET_NAME)
             }) {
                 target_bucket.push_todo(TodoItem::new(todo.item));
             }
@@ -342,11 +342,30 @@ impl State {
     }
 
     pub(crate) fn delete_bucket(&mut self, index: usize) -> bool {
-        if self.buckets.len() > index && self.buckets[index].todos().count() == 0 {
+        if self.buckets.len() > index
+            && self.buckets[index].name() != DEFAULT_BUCKET_NAME
+            && self.buckets[index].todos().count() == 0
+        {
             self.buckets.remove(index);
             true
         } else {
             false
+        }
+    }
+
+    pub(crate) fn change_bucket_index(
+        &mut self,
+        original_index: usize,
+        new_index: usize,
+    ) -> Result<(), BucketSwapError> {
+        if original_index >= self.buckets.len() {
+            Err(BucketSwapError::InvalidSelection)
+        } else if new_index >= self.buckets.len() {
+            Err(BucketSwapError::InvalidTargetIndex)
+        } else {
+            let bucket = self.buckets.remove(original_index);
+            self.buckets.insert(new_index, bucket);
+            Ok(())
         }
     }
 }
@@ -368,6 +387,12 @@ pub enum TodoSwapError {
     FirstInvalid,
     EqualIds,
     InvalidBucket,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BucketSwapError {
+    InvalidSelection,
+    InvalidTargetIndex,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

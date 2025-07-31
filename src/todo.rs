@@ -11,7 +11,7 @@ use ratatui::{
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::input_widget::InputWidget;
-use crate::state::{Bucket, EMPTY_BUCKET_NAME, State, TodoItem};
+use crate::state::{Bucket, DEFAULT_BUCKET_NAME, State, TodoItem};
 use crate::{Window, WindowActionResult, instruction_line};
 
 #[derive(Debug)]
@@ -200,6 +200,28 @@ impl Window for TodoWindow {
                                 self.selected_todo += 1;
                             }
                         }
+                        (Left, Buckets, BucketWidgetPurpose::Browse) => {
+                            if self.selected_bucket > 0 {
+                                state
+                                    .change_bucket_index(
+                                        self.selected_bucket,
+                                        self.selected_bucket - 1,
+                                    )
+                                    .expect("should be able to move bucket");
+                                self.selected_bucket -= 1;
+                            }
+                        }
+                        (Right, Buckets, BucketWidgetPurpose::Browse) => {
+                            if self.selected_bucket < state.get_buckets().count() - 1 {
+                                state
+                                    .change_bucket_index(
+                                        self.selected_bucket,
+                                        self.selected_bucket + 1,
+                                    )
+                                    .expect("should be able to move bucket");
+                                self.selected_bucket += 1;
+                            }
+                        }
                         (Char(' '), Todos, _) => {
                             if self.selected_todo < self.get_selected_bucket(state).todos().count()
                             {
@@ -347,7 +369,7 @@ impl<'a> Widget for &BucketListWidget<'a> {
                 .enumerate()
                 .map(|(i, x)| {
                     (
-                        x.todos().count() == 0 && x.name() != EMPTY_BUCKET_NAME,
+                        x.todos().count() == 0 && x.name() != DEFAULT_BUCKET_NAME,
                         self.is_focused && i == self.selected,
                         format!("<{}>", x.name()),
                     )
