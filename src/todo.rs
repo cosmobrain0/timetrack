@@ -11,7 +11,7 @@ use ratatui::{
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::input_widget::InputWidget;
-use crate::state::{State, TodoItem};
+use crate::state::{Bucket, DEFAULT_BUCKET_NAME, State, TodoItem};
 use crate::{Window, WindowActionResult, instruction_line};
 
 #[derive(Debug)]
@@ -37,17 +37,23 @@ impl TodoWindow {
 }
 impl TodoWindow {
     fn get_selected_todo<'a>(&self, state: &'a State) -> Option<&'a TodoItem> {
-        let bucket = self.get_selected_bucket(state);
-        state.get_todos_by_bucket(bucket).nth(self.selected_todo)
+        self.get_selected_bucket(state)
+            .todos()
+            .nth(self.selected_todo)
     }
 
-    fn get_selected_bucket<'a>(&self, state: &'a State) -> Option<&'a str> {
-        if self.selected_todo == 0 {
-            None
-        } else {
-            (self.selected_todo - 1 < state.bucket_count())
-                .then(|| state.buckets().remove(self.selected_todo - 1))
-        }
+    fn get_selected_bucket<'a>(&self, state: &'a State) -> &'a Bucket {
+        state
+            .get_buckets()
+            .nth(self.selected_bucket)
+            .expect("self.selected_bucket should be a valid bucket index")
+    }
+
+    fn get_selected_bucket_mut<'a>(&self, state: &'a mut State) -> &'a mut Bucket {
+        state
+            .get_buckets_mut()
+            .nth(self.selected_bucket)
+            .expect("self.selected_bucket should be a valid bucket index")
     }
 }
 impl Window for TodoWindow {
@@ -80,7 +86,6 @@ impl Window for TodoWindow {
         frame.render_widget(
             &TodoListWidget {
                 is_focused: self.focused_widget == TodoWidget::Todos,
-                todos: state.get_todos().collect(),
                 selected: self.selected_todo,
                 selected_bucket: self.get_selected_bucket(state),
             },
@@ -90,16 +95,7 @@ impl Window for TodoWindow {
         frame.render_widget(
             &BucketListWidget {
                 is_focused: self.focused_widget == TodoWidget::Buckets,
-                buckets: [None]
-                    .into_iter()
-                    .chain(
-                        state
-                            .buckets()
-                            .into_iter()
-                            .map(|name| (name, state.bucket_size(Some(name)) == 0))
-                            .map(Option::Some),
-                    )
-                    .collect(),
+                buckets: state.get_buckets().collect(),
                 selected: self.selected_bucket,
                 purpose: self.bucket_widget_purpose,
             },
@@ -109,6 +105,7 @@ impl Window for TodoWindow {
 
     fn handle_event(&mut self, state: &mut State, event: &Event) -> WindowActionResult {
         use KeyCode::*;
+        use TodoWidget::*;
         match event {
             Event::Key(KeyEvent {
                 code,
@@ -116,122 +113,166 @@ impl Window for TodoWindow {
                 kind: KeyEventKind::Press | KeyEventKind::Repeat,
                 state: _state,
             }) => match (code, modifiers) {
-                (code, &KeyModifiers::NONE) => match code {
-                    Tab if self.bucket_widget_purpose == BucketWidgetPurpose::Browse => {
-                        self.focused_widget = match self.focused_widget {
-                            TodoWidget::Todos => TodoWidget::TodoInput,
-                            TodoWidget::TodoInput => TodoWidget::Buckets,
-                            TodoWidget::Buckets => TodoWidget::BucketInput,
-                            TodoWidget::BucketInput => TodoWidget::Todos,
+                (code, &KeyModifiers::NONE) => {
+                    match (code, self.focused_widget, self.bucket_widget_purpose) {
+                        (Tab, _, BucketWidgetPurpose::Browse) => {
+                            self.focused_widget = match self.focused_widget {
+                                TodoWidget::Todos => TodoWidget::TodoInput,
+                                TodoWidget::TodoInput => TodoWidget::Buckets,
+                                TodoWidget::Buckets => TodoWidget::BucketInput,
+                                TodoWidget::BucketInput => TodoWidget::Todos,
+                            }
                         }
-                    }
-                    Enter => {
-                        if self.focused_widget == TodoWidget::TodoInput {
-                            let bucket = self.get_selected_bucket(state).map(ToString::to_string);
-                            state.push_todo(TodoItem::new(
-                                self.todo_input.value().to_string(),
-                                bucket,
-                            ));
+                        (Enter, TodoInput, _) => {
+                            let bucket = self.get_selected_bucket_mut(state);
+                            bucket.push_todo(TodoItem::new(self.todo_input.value().to_string()));
                             self.todo_input.reset();
-                        } else if self.focused_widget == TodoWidget::BucketInput {
-                            state.create_bucket(self.bucket_input.value().to_string());
+                        }
+                        (Enter, BucketInput, _) => {
+                            state.create_bucket(Bucket::new(
+                                self.bucket_input.value().to_string(),
+                                vec![],
+                            ));
                             self.bucket_input.reset();
-                        } else if self.focused_widget == TodoWidget::Todos {
-                            let original_bucket_size =
-                                state.bucket_size(self.get_selected_bucket(state));
-                            if self.selected_todo < original_bucket_size {
-                                let bucket =
-                                    self.get_selected_bucket(state).map(ToString::to_string);
-                                let _ = state.delete_todo_in_bucket(
-                                    self.selected_todo,
-                                    bucket.as_ref().map(|x| x.as_str()),
-                                );
+                        }
+                        (Enter, Todos, _) => {
+                            if self.selected_todo < self.get_selected_bucket(state).todos().count()
+                            {
+                                let bucket = self.get_selected_bucket_mut(state);
+                                *bucket.todos_mut() = bucket
+                                    .todos()
+                                    .map(TodoItem::clone)
+                                    .take(self.selected_todo)
+                                    .chain(
+                                        bucket
+                                            .todos()
+                                            .map(TodoItem::clone)
+                                            .skip(self.selected_todo + 1),
+                                    )
+                                    .collect();
                                 self.selected_todo = self
                                     .selected_todo
-                                    .min(original_bucket_size.saturating_sub(2));
+                                    .min(bucket.todos().count().saturating_sub(1));
                             }
-                        } else if self.focused_widget == TodoWidget::Buckets {
-                            if let Some(bucket) =
-                                self.get_selected_bucket(state).map(ToString::to_string)
+                        }
+                        (Enter, Buckets, _) => {
+                            if state.delete_bucket(self.selected_bucket) {
+                                self.selected_bucket = self.selected_bucket.saturating_sub(1);
+                            }
+                        }
+                        (Char('q'), Todos | Buckets, _) => {
+                            return WindowActionResult::Exit;
+                        }
+                        (Down, Todos, _) => {
+                            self.selected_todo = (self.selected_todo + 1).min(
+                                self.get_selected_bucket(state)
+                                    .todos()
+                                    .count()
+                                    .saturating_sub(1),
+                            );
+                        }
+                        (Up, Todos, _) => {
+                            self.selected_todo = self.selected_todo.saturating_sub(1);
+                        }
+                        (Down, Buckets, _) => {
+                            self.selected_bucket = (self.selected_bucket + 1)
+                                .min(state.get_buckets().count().saturating_sub(1));
+                            self.selected_todo = 0;
+                        }
+                        (Up, Buckets, _) => {
+                            self.selected_bucket = self.selected_bucket.saturating_sub(1);
+                            self.selected_todo = 0;
+                        }
+                        (Left, Todos, _) => {
+                            if self.selected_todo > 0 {
+                                self.get_selected_bucket_mut(state)
+                                    .todos_mut()
+                                    .swap(self.selected_todo, self.selected_todo - 1);
+                                self.selected_todo -= 1;
+                            }
+                        }
+                        (Right, Todos, _) => {
+                            let bucket_size = self.get_selected_bucket(state).todos().count();
+                            if bucket_size > 1 && self.selected_todo < bucket_size - 1 {
+                                self.get_selected_bucket_mut(state)
+                                    .todos_mut()
+                                    .swap(self.selected_todo, self.selected_todo + 1);
+                                self.selected_todo += 1;
+                            }
+                        }
+                        (Left, Buckets, BucketWidgetPurpose::Browse) => {
+                            if self.selected_bucket > 0 {
+                                state
+                                    .change_bucket_index(
+                                        self.selected_bucket,
+                                        self.selected_bucket - 1,
+                                    )
+                                    .expect("should be able to move bucket");
+                                self.selected_bucket -= 1;
+                            }
+                        }
+                        (Right, Buckets, BucketWidgetPurpose::Browse) => {
+                            if self.selected_bucket < state.get_buckets().count() - 1 {
+                                state
+                                    .change_bucket_index(
+                                        self.selected_bucket,
+                                        self.selected_bucket + 1,
+                                    )
+                                    .expect("should be able to move bucket");
+                                self.selected_bucket += 1;
+                            }
+                        }
+                        (Char(' '), Todos, _) => {
+                            if self.selected_todo < self.get_selected_bucket(state).todos().count()
                             {
-                                state.delete_bucket(bucket.as_str());
+                                self.focused_widget = TodoWidget::Buckets;
+                                self.bucket_widget_purpose = BucketWidgetPurpose::Move {
+                                    selected_bucket: self.selected_bucket,
+                                    selected_todo: self.selected_todo,
+                                };
                             }
                         }
-                    }
-                    Char('q')
-                        if self.focused_widget != TodoWidget::TodoInput
-                            && self.focused_widget != TodoWidget::BucketInput =>
-                    {
-                        return WindowActionResult::Exit;
-                    }
-                    Down if self.focused_widget == TodoWidget::Todos => {
-                        self.selected_todo = (self.selected_todo + 1)
-                            .min(state.bucket_size(self.get_selected_bucket(state)));
-                    }
-                    Up if self.focused_widget == TodoWidget::Todos => {
-                        self.selected_todo = self.selected_todo.saturating_sub(1);
-                    }
-                    Down if self.focused_widget == TodoWidget::Buckets => {
-                        self.selected_bucket = (self.selected_bucket + 1).min(state.bucket_count());
-                        self.selected_todo = 0;
-                    }
-                    Up if self.focused_widget == TodoWidget::Buckets => {
-                        self.selected_bucket = self.selected_bucket.saturating_sub(1);
-                        self.selected_todo = 0;
-                    }
-                    Left => {
-                        if self.selected_todo > 0
-                            && self.selected_todo
-                                < state.bucket_size(self.get_selected_bucket(state))
-                        {
-                            let _ = state.swap_todos(self.selected_todo, self.selected_todo - 1);
-                            self.selected_todo -= 1;
-                        }
-                    }
-                    Right => {
-                        let bucket_size = state.bucket_size(self.get_selected_bucket(state));
-                        if bucket_size > 1 && self.selected_todo < bucket_size - 1 {
-                            let _ = state.swap_todos(self.selected_todo, self.selected_todo + 1);
-                            self.selected_todo += 1;
-                        }
-                    }
-                    Char(' ') if self.focused_widget == TodoWidget::Todos => {
-                        self.focused_widget = TodoWidget::Buckets;
-                        self.bucket_widget_purpose = BucketWidgetPurpose::Move(self.selected_todo);
-                    }
-                    Char(' ') if self.focused_widget == TodoWidget::Buckets => {
-                        if let BucketWidgetPurpose::Move(x) = self.bucket_widget_purpose {
-                            let bucket = self.get_selected_bucket(state).map(ToString::to_string);
-                            if let Some(todo) = state.get_todo_mut(x) {
-                                todo.set_bucket(bucket);
-                            }
+                        (
+                            Char(' '),
+                            Buckets,
+                            BucketWidgetPurpose::Move {
+                                selected_bucket,
+                                selected_todo,
+                            },
+                        ) => {
+                            let todo_item = state
+                                .get_buckets_mut()
+                                .nth(selected_bucket)
+                                .expect("should be able to get source bucket of move")
+                                .todos_mut()
+                                .remove(selected_todo);
+                            state
+                                .get_buckets_mut()
+                                .nth(self.selected_bucket)
+                                .expect("should be able to get destination bucket for move")
+                                .todos_mut()
+                                .push(todo_item);
                             self.bucket_widget_purpose = BucketWidgetPurpose::Browse;
                             self.focused_widget = TodoWidget::Todos;
                         }
-                    }
-                    Char('1') => {
-                        if self.focused_widget != TodoWidget::TodoInput {
+                        (Char('1'), Todos | Buckets, _) => {
                             return WindowActionResult::FirstWindow;
                         }
-                    }
-                    Char('2') => {
-                        if self.focused_widget != TodoWidget::TodoInput {
+                        (Char('2'), Todos | Buckets, _) => {
                             return WindowActionResult::SecondWindow;
                         }
-                    }
-                    Char('3') => {
-                        if self.focused_widget != TodoWidget::TodoInput {
+                        (Char('3'), Todos | Buckets, _) => {
                             return WindowActionResult::ThirdWindow;
                         }
-                    }
-                    _ => {
-                        if self.focused_widget == TodoWidget::TodoInput {
+                        (_, TodoInput, _) => {
                             self.todo_input.handle_event(event);
-                        } else if self.focused_widget == TodoWidget::BucketInput {
+                        }
+                        (_, BucketInput, _) => {
                             self.bucket_input.handle_event(event);
                         }
+                        _ => (),
                     }
-                },
+                }
                 _ => (),
             },
             _ => (),
@@ -250,9 +291,8 @@ enum TodoWidget {
 
 struct TodoListWidget<'a> {
     is_focused: bool,
-    todos: Vec<&'a TodoItem>,
     selected: usize,
-    selected_bucket: Option<&'a str>,
+    selected_bucket: &'a Bucket,
 }
 impl<'a> Widget for &TodoListWidget<'a> {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
@@ -272,17 +312,11 @@ impl<'a> Widget for &TodoListWidget<'a> {
             ("Move Down", "Right"),
             ("Change Bucket", "Space"),
         ]);
+        let bucket = self.selected_bucket.name();
         List::new(
-            self.todos
-                .iter()
-                .filter(|x| x.bucket() == self.selected_bucket)
-                .map(|x| {
-                    format!(
-                        "<{bucket}> {item}",
-                        bucket = x.bucket().unwrap_or("N/A"),
-                        item = x.item()
-                    )
-                })
+            self.selected_bucket
+                .todos()
+                .map(|x| format!("<{bucket}> {item}", item = x.item()))
                 .enumerate()
                 .map(|(i, x)| {
                     if self.is_focused && i == self.selected {
@@ -306,7 +340,7 @@ impl<'a> Widget for &TodoListWidget<'a> {
 
 struct BucketListWidget<'a> {
     is_focused: bool,
-    buckets: Vec<Option<(&'a str, bool)>>,
+    buckets: Vec<&'a Bucket>,
     selected: usize,
     purpose: BucketWidgetPurpose,
 }
@@ -322,7 +356,7 @@ impl<'a> Widget for &BucketListWidget<'a> {
         };
         let list_instructions = match self.purpose {
             BucketWidgetPurpose::Browse => vec![("Scroll Up", "Up"), ("Scroll Down", "Down")],
-            BucketWidgetPurpose::Move(_) => vec![
+            BucketWidgetPurpose::Move { .. } => vec![
                 ("Scroll Up", "Up"),
                 ("Scroll Down", "Down"),
                 ("Select", "Space"),
@@ -332,37 +366,32 @@ impl<'a> Widget for &BucketListWidget<'a> {
         List::new(
             self.buckets
                 .iter()
-                .map(|x| {
-                    format!(
-                        "<{}>",
-                        x.map(|(name, deletable)| if deletable {
-                            name.dark_gray()
-                        } else {
-                            name.into()
-                        })
-                        .unwrap_or("N/A".into())
-                    )
-                })
                 .enumerate()
                 .map(|(i, x)| {
-                    if self.is_focused && i == self.selected {
-                        x.blue().bold()
-                    } else {
-                        x.into()
-                    }
+                    (
+                        x.todos().count() == 0 && x.name() != DEFAULT_BUCKET_NAME,
+                        self.is_focused && i == self.selected,
+                        format!("<{}>", x.name()),
+                    )
+                })
+                .map(|(deletable, focused, x)| match (focused, deletable) {
+                    (true, true) => x.on_dark_gray().blue().bold(),
+                    (true, false) => x.blue().bold(),
+                    (false, true) => x.dark_gray(),
+                    (false, false) => x.into(),
                 }),
         )
         .style(list_style)
         .block(if !self.is_focused {
             Block::bordered().title(match self.purpose {
                 BucketWidgetPurpose::Browse => " Buckets ",
-                BucketWidgetPurpose::Move(_) => " Move to Bucket ",
+                BucketWidgetPurpose::Move { .. } => " Move to Bucket ",
             })
         } else {
             Block::bordered()
                 .title(match self.purpose {
                     BucketWidgetPurpose::Browse => " Buckets ",
-                    BucketWidgetPurpose::Move(_) => " Move to Bucket ",
+                    BucketWidgetPurpose::Move { .. } => " Move to Bucket ",
                 })
                 .title_bottom(list_instructions.centered())
         })
@@ -372,5 +401,8 @@ impl<'a> Widget for &BucketListWidget<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BucketWidgetPurpose {
     Browse,
-    Move(usize),
+    Move {
+        selected_bucket: usize,
+        selected_todo: usize,
+    },
 }
