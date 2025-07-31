@@ -3,6 +3,7 @@ use std::fmt::Display;
 use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
 use ratatui::{style::Stylize, text::Line};
 use serde::{Deserialize, Serialize};
+pub use todos_and_buckets::{Bucket, TodoItem, TodoItemOld};
 
 use crate::stored_state_file_path;
 
@@ -12,8 +13,14 @@ pub struct StateBuilder {
     pub activities: Option<Vec<Activity>>,
     pub next_activity_id: Option<usize>,
     pub current: Option<CurrentActionInfo>,
+    /// NOTE: this was used in an older version, before buckets
     pub todo: Option<Vec<String>>,
+    pub todo_v2: Option<Vec<TodoItemOld>>,
+    pub buckets: Option<Vec<String>>,
+    pub buckets_v2: Option<Vec<Bucket>>,
 }
+
+pub const DEFAULT_BUCKET_NAME: &str = "N/A";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
@@ -21,10 +28,44 @@ pub struct State {
     activities: Vec<Activity>,
     next_activity_id: usize,
     current: Option<CurrentActionInfo>,
-    todo: Vec<String>,
+    buckets: Vec<Bucket>,
 }
 impl From<StateBuilder> for State {
     fn from(value: StateBuilder) -> Self {
+        let mut buckets = value.buckets_v2.unwrap_or_default();
+        for name in value.buckets.unwrap_or_default() {
+            if buckets.iter().map(|x| x.name()).all(|x| x != name.as_str()) {
+                buckets.push(Bucket::new(name, vec![]));
+            }
+        }
+        // REQUIREMENT: `buckets` must contain an `N/A` bucket
+        let default_bucket = if let Some(default_bucket) =
+            buckets.iter_mut().find(|x| x.name() == DEFAULT_BUCKET_NAME)
+        {
+            default_bucket
+        } else {
+            buckets.push(Bucket::new(String::from(DEFAULT_BUCKET_NAME), vec![]));
+            let last_index = buckets.len() - 1;
+            &mut buckets[last_index]
+        };
+
+        for old_todo in value.todo.unwrap_or_default() {
+            default_bucket.push_todo(TodoItem::new(old_todo));
+        }
+
+        for todo in value.todo_v2.unwrap_or_default() {
+            if let Some(target_bucket) = buckets.iter_mut().find(|x| {
+                x.name()
+                    == todo
+                        .bucket
+                        .as_ref()
+                        .map(|x| x.as_str())
+                        .unwrap_or(DEFAULT_BUCKET_NAME)
+            }) {
+                target_bucket.push_todo(TodoItem::new(todo.item));
+            }
+        }
+
         Self {
             next_activity_id: value.next_activity_id.unwrap_or_else(|| {
                 value
@@ -36,7 +77,7 @@ impl From<StateBuilder> for State {
             activities: value.activities.unwrap_or_default(),
             date: value.date.unwrap_or_else(|| Utc::now().date_naive()),
             current: value.current,
-            todo: value.todo.unwrap_or_default(),
+            buckets,
         }
     }
 }
@@ -52,7 +93,7 @@ impl State {
                 .collect(),
             next_activity_id: self.next_activity_id,
             current: self.current,
-            todo: self.todo.clone(),
+            buckets: self.buckets.clone(),
         }
     }
 
@@ -243,7 +284,17 @@ impl State {
     fn save_state(&self) -> Result<(), Box<dyn std::error::Error>> {
         std::fs::write(
             stored_state_file_path()?,
-            serde_json::to_string(self).expect("should be able to convert to string"),
+            serde_json::to_string(&StateBuilder {
+                date: Some(self.date),
+                activities: Some(self.activities.clone()),
+                next_activity_id: Some(self.next_activity_id),
+                current: self.current,
+                todo: None,
+                buckets_v2: Some(self.buckets.clone()),
+                todo_v2: None,
+                buckets: None,
+            })
+            .expect("should be able to convert to string"),
         )?;
         Ok(())
     }
@@ -267,37 +318,55 @@ impl State {
     }
 }
 impl State {
-    pub fn get_todos(&self) -> std::slice::Iter<'_, String> {
-        self.todo.iter()
+    pub(crate) fn get_buckets(&self) -> impl Iterator<Item = &Bucket> {
+        self.buckets.iter()
     }
 
-    pub fn push_todo(&mut self, todo: String) {
-        self.todo.push(todo);
+    pub(crate) fn get_buckets_mut(&mut self) -> impl Iterator<Item = &mut Bucket> {
+        self.buckets.iter_mut()
     }
 
-    pub fn delete_todo(&mut self, id: usize) -> Result<String, TodoDeletionError> {
-        if id < self.todo.len() {
-            Ok(self.todo.remove(id))
+    /// Returns true if the bucket was added,
+    /// and false if its todos were combined
+    /// with an already existing bucket
+    pub(crate) fn create_bucket(&mut self, bucket: Bucket) -> bool {
+        if let Some(stored_bucket) = self.get_buckets_mut().find(|x| *x == &bucket) {
+            stored_bucket
+                .todos_mut()
+                .extend(bucket.todos().map(TodoItem::clone));
+            false
         } else {
-            Err(TodoDeletionError::InvalidId)
+            self.buckets.push(bucket);
+            true
         }
     }
 
-    pub fn swap_todos(&mut self, id1: usize, id2: usize) -> Result<(), TodoSwapError> {
-        if id1 == id2 {
-            Err(TodoSwapError::EqualIds)
-        } else if id1 >= self.todo.len() {
-            Err(TodoSwapError::FirstInvalid)
-        } else if id2 >= self.todo.len() {
-            Err(TodoSwapError::SecondInvalid)
+    pub(crate) fn delete_bucket(&mut self, index: usize) -> bool {
+        if self.buckets.len() > index
+            && self.buckets[index].name() != DEFAULT_BUCKET_NAME
+            && self.buckets[index].todos().count() == 0
+        {
+            self.buckets.remove(index);
+            true
         } else {
-            self.todo.swap(id1, id2);
+            false
+        }
+    }
+
+    pub(crate) fn change_bucket_index(
+        &mut self,
+        original_index: usize,
+        new_index: usize,
+    ) -> Result<(), BucketSwapError> {
+        if original_index >= self.buckets.len() {
+            Err(BucketSwapError::InvalidSelection)
+        } else if new_index >= self.buckets.len() {
+            Err(BucketSwapError::InvalidTargetIndex)
+        } else {
+            let bucket = self.buckets.remove(original_index);
+            self.buckets.insert(new_index, bucket);
             Ok(())
         }
-    }
-
-    pub fn todo_count(&self) -> usize {
-        self.todo.len()
     }
 }
 impl Drop for State {
@@ -309,6 +378,7 @@ impl Drop for State {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoDeletionError {
     InvalidId,
+    InvalidIdOrBucket,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -316,6 +386,13 @@ pub enum TodoSwapError {
     SecondInvalid,
     FirstInvalid,
     EqualIds,
+    InvalidBucket,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BucketSwapError {
+    InvalidSelection,
+    InvalidTargetIndex,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -399,4 +476,67 @@ impl Display for ActivityId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{id}]", id = self.0)
     }
+}
+
+mod todos_and_buckets {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct TodoItemOld {
+        pub item: String,
+        pub bucket: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct TodoItem(String);
+    impl TodoItem {
+        pub fn new(item: String) -> Self {
+            Self(item)
+        }
+
+        pub fn item(&self) -> &str {
+            &self.0
+        }
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Bucket {
+        name: String,
+        todos: Vec<TodoItem>,
+    }
+    impl std::hash::Hash for Bucket {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.name.hash(state);
+        }
+    }
+    impl Bucket {
+        pub fn new(name: String, todos: Vec<TodoItem>) -> Self {
+            Self { name, todos }
+        }
+
+        pub fn name(&self) -> &str {
+            &self.name
+        }
+        pub fn todos(&self) -> impl Iterator<Item = &TodoItem> {
+            self.todos.iter()
+        }
+
+        pub fn set_name(&mut self, name: String) {
+            self.name = name;
+        }
+
+        pub fn todos_mut(&mut self) -> &mut Vec<TodoItem> {
+            &mut self.todos
+        }
+
+        pub(crate) fn push_todo(&mut self, todo: TodoItem) {
+            self.todos.push(todo);
+        }
+    }
+    impl PartialEq for Bucket {
+        fn eq(&self, other: &Self) -> bool {
+            self.name == other.name
+        }
+    }
+    impl Eq for Bucket {}
 }

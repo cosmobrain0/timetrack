@@ -45,4 +45,6 @@ If you think something should be added to the TODO list, open an issue!
 
 # Known Bugs
 
-None so far.
+## Todo List Input
+
+Pressing the 1 key on the Todo section's input box does not do anything (a 1 should be seen in the input box).

@@ -59,10 +59,52 @@ impl HelpWindow {
                 " The session will end automatically when the timer is up. If the ".into(),
                 "notifications".green().bold(),
                 " feature is activated, then you will get a notification when the session is over. The session can be stopped early by going to the ".into(),
-                "Ongoing".green().bold(), 
+                "Ongoing".green().bold(),
                 " widget and pressing ".into(),
                 "<Backspace>".blue().bold(),
                 ".".into(),
+            ],
+            vec![],
+            vec!["Todo List".yellow().bold()],
+            vec![
+                "Todo Items".green().bold(),
+                " are tasks which must be completed, and they can be categorised into ".into(),
+                "Buckets".green().bold(),
+                ".".into(),
+            ],
+            vec![
+                "Creating Todo Items and Buckets:".yellow().bold(),
+                " Go to the ".into(),
+                "Todo List".yellow().bold(),
+                " section and type the name of a new ".into(),
+                "Todo Item".green().bold(),
+                " or ".into(),
+                "Bucket".green().bold(),
+                ", then press ".into(),
+                "<Enter>".blue().bold(),
+                " to create the item or bucket.".into(),
+            ],
+            vec![
+                "Moving a Todo Item to a different Bucket:".yellow().bold(),
+                " Select a ".into(),
+                "Todo Item".green().bold(),
+                " and press ".into(),
+                "<Space>".blue().bold(),
+                " to select it to be moved, then select a ".into(),
+                "Bucket".green().bold(),
+                " and press ".into(),
+                "<Space>".blue().bold(),
+                " to move the item to that ".into(),
+                "Bucket".green().bold(),
+                ".".into()
+            ],
+            vec![
+                "Deleting a Bucket:".yellow().bold(),
+                " Press ".into(),
+                "<Enter>".blue().bold(),
+                " when an empty ".into(),
+                "Bucket".green().bold(),
+                " is selected to delete it.".into()
             ]
         ];
         Self { data }
