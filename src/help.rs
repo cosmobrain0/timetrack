@@ -65,7 +65,7 @@ impl HelpWindow {
                 ".".into(),
             ],
             vec![],
-            vec!["Todo List".yellow().bold()],
+            vec!["Todo List".yellow().bold().underlined()],
             vec![
                 "Todo Items".green().bold(),
                 " are tasks which must be completed, and they can be categorised into ".into(),
