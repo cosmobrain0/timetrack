@@ -13,13 +13,23 @@ If the file does not exist, or directories in the file path do not exist, this p
 
 # TODO
 
-## Feature: Todo List Buckets
-
-It should be possible to categorise todo list items in buckets, and to switch between different buckets
-
 ## Feature: Todo item descriptions
 
 It should be possible to give multi-line descriptions to todo items, which can be expanded and viewed.
+
+## Feature: Todo Item Status
+
+It should be possible to mark todo items as done or not done, without deleting them.
+
+It should also be possible to delete every completed item in the current bucket
+
+## Bug Fix: Todo List Input
+
+Fix bug (0)
+
+## Feature: Control Widget
+
+The bottom of the screen should be reserved for showing every command which can be executed.
 
 ## Feature: Todo bucket descriptions
 
@@ -45,6 +55,10 @@ If you think something should be added to the TODO list, open an issue!
 
 # Known Bugs
 
-## Todo List Input
+## (0) Todo List Input
 
 Pressing the 1 key on the Todo section's input box does not do anything (a 1 should be seen in the input box).
+
+## (1) Inputs don't recognise capital letters
+
+It looks like there's something wrong with inputting stuff using modifier keys such as Shift.
